@@ -1,6 +1,17 @@
 'use strict';
 
-const ANALYST_APPROVAL_LIMIT = 50000;
+/**
+ * Teto de alçada do papel `analyst`, em reais.
+ *
+ * Fonte normativa: BR-APR-001 (`product/SIM-002/requirements/BUSINESS_RULES.md`):
+ * "Até R$ 10.000,00 (inclusive) → `analyst` ou `manager`;
+ *  acima de R$ 10.000,00 → `manager`".
+ *
+ * A fronteira é INCLUSIVA: exatamente 10.000,00 é permitido ao analista.
+ * Por isso a guarda usa comparação estrita (`creditLimit > ANALYST_APPROVAL_LIMIT`)
+ * e não `>=`. Qualquer alteração deste valor exige alteração prévia da BR-APR-001.
+ */
+const ANALYST_APPROVAL_LIMIT = 10000;
 const APPROVER_ROLES = ['analyst', 'manager'];
 
 /**
@@ -34,6 +45,7 @@ function createApprovalService(db) {
       throw new Error('Fornecedor já está aprovado');
     }
 
+    // BR-APR-001: fronteira inclusiva — recusa somente ACIMA do teto.
     if (approver.role === 'analyst' && creditLimit > ANALYST_APPROVAL_LIMIT) {
       throw new Error('Limite de crédito acima da alçada do analista: requer gerente');
     }
