@@ -131,6 +131,60 @@ test('TC-SIM-002b: cancelamento com menos de 24h de antecedencia cobra taxa de 2
   assert.equal(result.fee, 40);
 });
 
+// TC-SIM-005 — BR-SIM-001 / FIND-SIM-001-001 (SIM-001 VALIDATION DRILL v1,
+// escopo PARCIAL: cobre apenas o caminho "nao-dono", ver
+// remediation/cases/SIM-001-FIND-001/REMEDIATION_EVIDENCE_PACKAGE.md).
+// O cenario "admin cancela reserva de terceiro" (RETEST_SPECIFICATION item c)
+// fica deliberadamente FORA desta suite v1 e sera adicionado em v2.
+test('TC-SIM-005: nao-dono nao consegue cancelar reserva de outro usuario (BR-SIM-001, v1 drill)', () => {
+  const service = createBookingService();
+
+  const booking = service.createBooking({
+    roomId: 'room-a',
+    userId: 'user-1',
+    start: '2026-09-10T10:00:00Z',
+    end: '2026-09-10T12:00:00Z',
+    price: 200,
+  });
+
+  assert.throws(
+    () =>
+      service.cancelBooking({
+        bookingId: booking.id,
+        userId: 'user-2',
+        userRole: 'user',
+        now: '2026-09-08T10:00:00Z',
+      }),
+    /not authorized/
+  );
+
+  const list = service.listBookings('room-a');
+  assert.equal(list.length, 1, 'reserva deve permanecer active');
+  assert.equal(list[0].status, 'active');
+});
+
+// TC-SIM-006 — BR-SIM-001 (SIM-001 VALIDATION DRILL v1)
+test('TC-SIM-006: dono consegue cancelar a propria reserva (BR-SIM-001, v1 drill)', () => {
+  const service = createBookingService();
+
+  const booking = service.createBooking({
+    roomId: 'room-a',
+    userId: 'user-1',
+    start: '2026-09-10T10:00:00Z',
+    end: '2026-09-10T12:00:00Z',
+    price: 200,
+  });
+
+  const result = service.cancelBooking({
+    bookingId: booking.id,
+    userId: 'user-1',
+    userRole: 'user',
+    now: '2026-09-08T10:00:00Z',
+  });
+
+  assert.equal(result.status, 'cancelled');
+});
+
 test('TC-SIM-002c: nao permite cancelar reserva ja cancelada', () => {
   const service = createBookingService();
 
