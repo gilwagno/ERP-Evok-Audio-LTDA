@@ -6,16 +6,21 @@ Rastreabilidade: REQ → BR → AC → TC.
 
 ## REQ-SIM2-001 — Cadastrar fornecedor
 
-O sistema deve permitir cadastrar um fornecedor informando `cnpj`, `name` e
-`companyId`. O fornecedor cadastrado recebe identificador único e status
-inicial `pending`.
+O sistema deve permitir que um usuário autenticado cadastre um fornecedor
+informando `cnpj` e `name`. O fornecedor é sempre criado na empresa do usuário
+(`user.companyId`), recebe identificador único e status inicial `pending`.
 
-- **BRs relacionadas:** BR-SUP-002 (unicidade de CNPJ)
-- **AC-SIM2-001:** Dado um CNPJ ainda não cadastrado, quando um usuário cadastra
-  o fornecedor com `cnpj`, `name` e `companyId` válidos, então o fornecedor é
-  criado com `id` único, status `pending` e `credit_limit` igual a `0`. Dado um
-  CNPJ já existente no sistema, então o cadastro é recusado.
-- **TC planejado:** TC-SIM2-001
+- **BRs relacionadas:** BR-SUP-002 (unicidade de CNPJ), BR-SEC-001 (isolamento
+  por empresa, também na escrita)
+- **AC-SIM2-001:** Dado um CNPJ ainda não cadastrado, quando um usuário
+  autenticado cadastra o fornecedor com `cnpj` e `name` válidos, então o
+  fornecedor é criado com `id` único, `company_id` igual a `user.companyId`,
+  status `pending` e `credit_limit` igual a `0`. Dado um CNPJ já existente no
+  sistema, então o cadastro é recusado. Dado um `companyId` informado diferente
+  de `user.companyId`, então o cadastro é recusado e nenhum registro é criado na
+  outra empresa. Dada uma chamada sem usuário, então o cadastro é recusado —
+  não há escrita sem sujeito.
+- **TC planejado:** TC-SIM2-001, TC-SIM2-001c, TC-SIM2-001d, TC-SIM2-001e
 
 ## REQ-SIM2-002 — Aprovar fornecedor com alçada
 
@@ -66,8 +71,11 @@ por empresa.
 - **AC-SIM2-005:** Dado um usuário da empresa proprietária do fornecedor, quando
   ele lista os pagamentos daquele fornecedor, então recebe todos os pagamentos
   do fornecedor, ordenados por data de criação. Dado um usuário de outra
-  empresa, então a listagem é recusada.
-- **TC planejado:** TC-SIM2-005
+  empresa, então a listagem é recusada com erro genérico
+  (`Fornecedor não encontrado`) e nenhum dado da outra empresa é devolvido. Em
+  toda listagem bem-sucedida, todo item satisfaz
+  `item.company_id === user.companyId`.
+- **TC planejado:** TC-SIM2-005, TC-SIM2-005b, TC-SIM2-005c
 
 ## REQ-SIM2-006 — Consultar fornecedor
 

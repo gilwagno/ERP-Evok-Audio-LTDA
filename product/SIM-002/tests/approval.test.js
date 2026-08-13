@@ -8,7 +8,8 @@ function newSupplier(ctx, cnpj = '33444555000122') {
   return ctx.suppliers.createSupplier({
     cnpj,
     name: 'Insumos Brasil LTDA',
-    companyId: ctx.companies.acme
+    companyId: ctx.companies.acme,
+    user: user({ companyId: ctx.companies.acme })
   });
 }
 
