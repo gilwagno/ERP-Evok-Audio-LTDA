@@ -9,7 +9,8 @@ CREATE TABLE IF NOT EXISTS companies (
 CREATE TABLE IF NOT EXISTS suppliers (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   company_id   INTEGER NOT NULL,
-  cnpj         TEXT NOT NULL,
+  -- BR-SUP-002: unicidade GLOBAL de CNPJ, independentemente da empresa.
+  cnpj         TEXT NOT NULL UNIQUE,
   name         TEXT NOT NULL,
   status       TEXT NOT NULL DEFAULT 'pending',
   credit_limit REAL NOT NULL DEFAULT 0,
@@ -45,3 +46,9 @@ CREATE TABLE IF NOT EXISTS payment_attempts (
 CREATE INDEX IF NOT EXISTS idx_suppliers_company ON suppliers (company_id);
 CREATE INDEX IF NOT EXISTS idx_payments_supplier ON payments (supplier_id);
 CREATE INDEX IF NOT EXISTS idx_payment_attempts_payment ON payment_attempts (payment_id);
+
+-- BR-PAY-002 (defesa em profundidade): no máximo UMA tentativa aceita por
+-- pagamento. Tentativas falhas permanecem sem restrição para preservar a trilha.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_attempts_accepted
+  ON payment_attempts (payment_id)
+  WHERE result = 'accepted';
