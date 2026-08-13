@@ -201,7 +201,13 @@ TEST_RESULTS (v2): `node --test "product/SIM-001/tests/**/*.test.js"` →
 **9 testes, 9 pass, 0 fail** (as 8 da v1 + TC-SIM-007). Nenhum teste
 pré-existente regrediu.
 
-REMEDIATION_COMMIT (v2): `db5c1ef`
+REMEDIATION_COMMIT (v2): **`08b4323`** — "fix(sim-001): FIND-001 v2 —
+caminho admin implementado apos RETEST_FAILED". Este é o commit a ser
+retestado pela VeriCore: contém a correção de código e os testes.
+Nota de rastreabilidade: o corpo desta seção foi escrito no mesmo commit
+`08b4323`, então o hash não podia constar dele (auto-referência impossível
+em git); o campo foi preenchido por um commit de documentação imediatamente
+subsequente, que **não altera código nem testes**.
 
 SYSTEMIC_FIX_REQUIRED: **não — ambos os caminhos (dono e admin) estão
 implementados**, e a suíte cobre os três cenários (a, b, c) do
