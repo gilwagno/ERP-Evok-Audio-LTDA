@@ -57,10 +57,13 @@ const db = openDatabase(':memory:');
 const company = createCompany(db, 'ACME Indústria');
 const suppliers = createSupplierService(db);
 
+// A empresa do fornecedor vem do usuário autenticado (BR-SEC-001).
+const usuario = { id: 'ana', role: 'analyst', companyId: company.id };
+
 const supplier = suppliers.createSupplier({
   cnpj: '11222333000181',
   name: 'Metalúrgica Sul',
-  companyId: company.id
+  user: usuario
 });
 ```
 

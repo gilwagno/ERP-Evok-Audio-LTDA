@@ -23,16 +23,22 @@ O objeto `user` / `approver` esperado pelas operações tem o formato
 
 ---
 
-## `suppliers.createSupplier({ cnpj, name, companyId })`
+## `suppliers.createSupplier({ cnpj, name, user, companyId? })`
 
-Cadastra um fornecedor.
+Cadastra um fornecedor na empresa do usuário.
 
 - **Papel exigido:** qualquer usuário autenticado da empresa.
-- **Entrada:** `cnpj` (14 dígitos), `name` (texto), `companyId` (inteiro).
-- **Saída:** registro do fornecedor com `status: "pending"` e `credit_limit: 0`.
-- **Erros:** `CNPJ inválido`, `Nome do fornecedor é obrigatório`,
-  `Empresa não encontrada`.
-- **Referências:** REQ-SIM2-001, BR-SUP-002.
+- **Entrada:** `cnpj` (14 dígitos), `name` (texto), `user` (obrigatório);
+  `companyId` é opcional e, se informado, deve ser igual a `user.companyId` —
+  a empresa de destino é sempre derivada de `user.companyId`, nunca do
+  parâmetro.
+- **Saída:** registro do fornecedor com `company_id === user.companyId`,
+  `status: "pending"` e `credit_limit: 0`.
+- **Erros:** `Usuário inválido` (chamada sem sujeito),
+  `Cadastro de fornecedor em outra empresa não é permitido`
+  (`companyId !== user.companyId`), `CNPJ inválido`,
+  `Nome do fornecedor é obrigatório`, `Empresa não encontrada`.
+- **Referências:** REQ-SIM2-001, BR-SUP-002, BR-SEC-001.
 
 ## `suppliers.getSupplier({ supplierId, user })`
 
@@ -94,6 +100,9 @@ Lista os pagamentos de um fornecedor, restritos à empresa do usuário.
 
 - **Papel exigido:** `analyst` ou `manager` da empresa proprietária.
 - **Entrada:** `supplierId`, `user`.
-- **Saída:** array de pagamentos ordenado por `created_at`.
-- **Erros:** `Usuário inválido`.
+- **Saída:** array de pagamentos da empresa do usuário, ordenado por
+  `created_at`. Todo item satisfaz `company_id === user.companyId`.
+- **Erros:** `Usuário inválido`, `Fornecedor não encontrado` (inclusive quando o
+  fornecedor pertence a outra empresa — erro genérico, sem oráculo de
+  existência).
 - **Referências:** REQ-SIM2-005, BR-SEC-001.

@@ -6,7 +6,12 @@ const PAYER_ROLES = ['analyst', 'manager'];
  * Serviço de pagamentos a fornecedores.
  */
 function createPaymentService({ db, gateway }) {
-  async function loadApprovedSupplier(supplierId, user) {
+  /**
+   * Único ponto de resolução de fornecedor no serviço: impõe BR-SEC-001
+   * amarrando o fornecedor à empresa do usuário. Erro genérico para não
+   * revelar a existência de fornecedores de outras empresas.
+   */
+  function loadSupplierInTenant(supplierId, user) {
     const supplier = db.get(
       'SELECT * FROM suppliers WHERE id = ? AND company_id = ?',
       supplierId,
@@ -16,6 +21,13 @@ function createPaymentService({ db, gateway }) {
     if (!supplier) {
       throw new Error('Fornecedor não encontrado');
     }
+
+    return supplier;
+  }
+
+  async function loadApprovedSupplier(supplierId, user) {
+    const supplier = loadSupplierInTenant(supplierId, user);
+
     if (supplier.status !== 'approved') {
       throw new Error('Fornecedor não está aprovado para receber pagamentos');
     }
@@ -105,16 +117,23 @@ function createPaymentService({ db, gateway }) {
   }
 
   /**
-   * Lista os pagamentos de um fornecedor.
+   * Lista os pagamentos de um fornecedor da empresa do usuário (BR-SEC-001).
    */
   function listPaymentsBySupplier({ supplierId, user }) {
     if (!user || !Number.isInteger(user.companyId)) {
       throw new Error('Usuário inválido');
     }
 
+    // Fornecedor de outra empresa é indistinguível de inexistente.
+    loadSupplierInTenant(supplierId, user);
+
     return db.all(
-      `SELECT * FROM payments WHERE supplier_id = ? ORDER BY created_at, id`,
-      supplierId
+      `SELECT * FROM payments
+        WHERE supplier_id = ?
+          AND company_id = ?
+        ORDER BY created_at, id`,
+      supplierId,
+      user.companyId
     );
   }
 
