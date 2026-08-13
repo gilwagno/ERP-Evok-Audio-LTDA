@@ -15,6 +15,23 @@ Empresas (tenants) que operam no sistema.
 | `name` | TEXT | NOT NULL | Razão social da empresa. |
 | `created_at` | TEXT | NOT NULL | Data/hora de criação (ISO 8601). |
 
+## users
+
+Fonte confiável de identidade (APR-2026-008 / Regra 24 do `CLAUDE.md`). Papel e
+empresa do usuário existem **apenas aqui**: nenhum serviço aceita `role` ou
+`companyId` vindos do payload do chamador.
+
+| Coluna | Tipo | Restrições | Descrição |
+|---|---|---|---|
+| `id` | TEXT | PK | Identificador do usuário; é a única informação aproveitada do payload. |
+| `company_id` | INTEGER | NOT NULL, FK → `companies.id` | Empresa à qual o usuário pertence (BR-SEC-001). |
+| `role` | TEXT | NOT NULL, CHECK `IN ('analyst','manager')` | Papel do usuário. Escrita de pagamento exige `manager`; leitura admite `analyst` e `manager` (APR-2026-008). |
+| `created_at` | TEXT | NOT NULL | Data/hora de provisionamento (ISO 8601). |
+
+**Índices**
+
+- `idx_users_company` (`company_id`) — não único.
+
 ## suppliers
 
 Fornecedores cadastrados, sempre vinculados a uma empresa.
@@ -41,11 +58,19 @@ Pagamentos registrados para um fornecedor.
 | `supplier_id` | INTEGER | NOT NULL, FK → `suppliers.id` | Fornecedor destinatário. |
 | `company_id` | INTEGER | NOT NULL, FK → `companies.id` | Empresa pagadora (BR-SEC-001). |
 | `amount` | REAL | NOT NULL | Valor do pagamento, em reais; deve ser positivo. |
-| `status` | TEXT | NOT NULL, default `created` | Situação do pagamento: `created`, `sent`, `cancelled`. |
+| `status` | TEXT | NOT NULL, default `created`, CHECK `IN ('created','sent','cancelled','failed')` | Situação do pagamento: `created` (registrado, não enviado), `sent` (aceito pelo gateway), `cancelled` (cancelado antes do envio — APR-2026-007), `failed` (**recusado pelo gateway** — APR-2026-009; causa distinta de cancelamento, rastreada separadamente). |
 | `external_ref` | TEXT | NULL | Referência devolvida pelo gateway após o envio. |
 | `created_by` | TEXT | NOT NULL | Identificador do usuário que registrou o pagamento. |
 | `created_at` | TEXT | NOT NULL | Data/hora do registro (ISO 8601). |
-| `sent_at` | TEXT | NULL | Data/hora do envio ao gateway (ISO 8601). |
+| `sent_at` | TEXT | NULL | Data/hora do envio ao gateway (ISO 8601). Permanece nula sob recusa (`failed`): não houve envio. |
+
+**Transições de estado válidas (APR-2026-007 / APR-2026-009)**
+
+- `created → cancelled` — cancelamento antes do envio.
+- `created → sent` / `failed → sent` — gateway aceitou.
+- `created → failed` / `failed → failed` — gateway recusou.
+- `sent → *` — **nenhuma**. Envio aceito é fato irreversível neste escopo;
+  reverter seria estorno, operação fora do SIM-002.
 
 ## payment_attempts
 

@@ -2,21 +2,38 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { buildContext, user } = require('./support');
+const { buildContext } = require('./support');
 
+/**
+ * Cadastra e aprova um fornecedor.
+ *
+ * Identidades derivadas da empresa para não colidir entre tenants: o mesmo
+ * `users.id` não pode pertencer a duas empresas (a tabela `users` é a fonte de
+ * verdade — APR-2026-008).
+ */
 function approvedSupplier(ctx, { cnpj = '44555666000133', creditLimit = 20000, companyId = ctx.companies.acme } = {}) {
   const supplier = ctx.suppliers.createSupplier({
     cnpj,
     name: 'Componentes Eletrônicos SA',
     companyId,
-    user: user({ companyId })
+    user: ctx.user({ id: `cadastrador-${companyId}`, role: 'analyst', companyId })
   });
 
   return ctx.approvals.approveSupplier({
     supplierId: supplier.id,
     creditLimit,
-    approver: user({ id: 'gerson', role: 'manager', companyId })
+    approver: ctx.user({ id: `gerson-${companyId}`, role: 'manager', companyId })
   });
+}
+
+/** Papel de escrita de pagamento: `manager` (APR-2026-008). */
+function payer(ctx, companyId = ctx.companies.acme) {
+  return ctx.user({ id: `marina-${companyId}`, role: 'manager', companyId });
+}
+
+/** Papel de leitura: `analyst` (APR-2026-008). */
+function reader(ctx, companyId = ctx.companies.acme) {
+  return ctx.user({ id: `ana-${companyId}`, role: 'analyst', companyId });
 }
 
 /** Pós-condição lida diretamente do banco: quantidade de pagamentos do fornecedor. */
@@ -45,7 +62,7 @@ test('TC-SIM2-003: pagamento para fornecedor aprovado e registrado', async () =>
     const payment = await ctx.payments.createPayment({
       supplierId: supplier.id,
       amount: 1500,
-      user: user({ id: 'ana', role: 'analyst', companyId: ctx.companies.acme })
+      user: payer(ctx)
     });
 
     assert.ok(Number.isInteger(payment.id));
@@ -73,7 +90,7 @@ test('TC-SIM2-003b: pagamento acima do limite de credito e rejeitado e nada e pe
       () => ctx.payments.createPayment({
         supplierId: supplier.id,
         amount: 9000,
-        user: user({ id: 'ana', role: 'analyst', companyId: ctx.companies.acme })
+        user: payer(ctx)
       }),
       /excede o limite/
     );
@@ -90,19 +107,19 @@ test('TC-SIM2-003d: o teto considera a soma acumulada, nao o valor isolado', asy
   const ctx = buildContext();
   try {
     const supplier = approvedSupplier(ctx, { creditLimit: 5000 });
-    const payer = user({ id: 'ana', role: 'analyst', companyId: ctx.companies.acme });
+    const manager = payer(ctx);
 
     const first = await ctx.payments.createPayment({
       supplierId: supplier.id,
       amount: 3000,
-      user: payer
+      user: manager
     });
     assert.strictEqual(first.amount, 3000);
     assert.strictEqual(countPayments(ctx, supplier.id), 1);
 
     // 3000 + 2500 = 5500 > 5000, ainda que 2500 isoladamente caiba no limite.
     await assert.rejects(
-      () => ctx.payments.createPayment({ supplierId: supplier.id, amount: 2500, user: payer }),
+      () => ctx.payments.createPayment({ supplierId: supplier.id, amount: 2500, user: manager }),
       /excede o limite/
     );
 
@@ -117,12 +134,12 @@ test('TC-SIM2-003e: caso acumulado do RETEST_SPEC — limite 10000, 6000 aceito 
   const ctx = buildContext();
   try {
     const supplier = approvedSupplier(ctx, { creditLimit: 10000 });
-    const payer = user({ id: 'ana', role: 'analyst', companyId: ctx.companies.acme });
+    const manager = payer(ctx);
 
-    await ctx.payments.createPayment({ supplierId: supplier.id, amount: 6000, user: payer });
+    await ctx.payments.createPayment({ supplierId: supplier.id, amount: 6000, user: manager });
 
     await assert.rejects(
-      () => ctx.payments.createPayment({ supplierId: supplier.id, amount: 5000, user: payer }),
+      () => ctx.payments.createPayment({ supplierId: supplier.id, amount: 5000, user: manager }),
       /excede o limite/
     );
 
@@ -137,15 +154,15 @@ test('TC-SIM2-003f: soma exatamente igual ao limite e aceita; limite + 0,01 e re
   const ctx = buildContext();
   try {
     const supplier = approvedSupplier(ctx, { creditLimit: 5000 });
-    const payer = user({ id: 'ana', role: 'analyst', companyId: ctx.companies.acme });
+    const manager = payer(ctx);
 
-    await ctx.payments.createPayment({ supplierId: supplier.id, amount: 4000, user: payer });
+    await ctx.payments.createPayment({ supplierId: supplier.id, amount: 4000, user: manager });
 
     // Fronteira exata: 4000 + 1000 == 5000 → aceito.
     const exact = await ctx.payments.createPayment({
       supplierId: supplier.id,
       amount: 1000,
-      user: payer
+      user: manager
     });
     assert.strictEqual(exact.status, 'created');
     assert.strictEqual(countPayments(ctx, supplier.id), 2);
@@ -153,7 +170,7 @@ test('TC-SIM2-003f: soma exatamente igual ao limite e aceita; limite + 0,01 e re
 
     // Um centavo acima do teto → recusado, sem persistência.
     await assert.rejects(
-      () => ctx.payments.createPayment({ supplierId: supplier.id, amount: 0.01, user: payer }),
+      () => ctx.payments.createPayment({ supplierId: supplier.id, amount: 0.01, user: manager }),
       /excede o limite/
     );
     assert.strictEqual(countPayments(ctx, supplier.id), 2);
@@ -170,14 +187,14 @@ test('TC-SIM2-003c: pagamento para fornecedor nao aprovado e rejeitado', async (
       cnpj: '55666777000144',
       name: 'Ferragens do Vale',
       companyId: ctx.companies.acme,
-      user: user({ companyId: ctx.companies.acme })
+      user: reader(ctx)
     });
 
     await assert.rejects(
       () => ctx.payments.createPayment({
         supplierId: supplier.id,
         amount: 100,
-        user: user({ id: 'ana', role: 'analyst', companyId: ctx.companies.acme })
+        user: payer(ctx)
       }),
       /não está aprovado/
     );
@@ -190,13 +207,14 @@ test('TC-SIM2-004: envio ao gateway marca pagamento como sent e registra tentati
   const ctx = buildContext();
   try {
     const supplier = approvedSupplier(ctx);
+    const manager = payer(ctx);
     const payment = await ctx.payments.createPayment({
       supplierId: supplier.id,
       amount: 2500,
-      user: user({ id: 'ana', role: 'analyst', companyId: ctx.companies.acme })
+      user: manager
     });
 
-    const sent = await ctx.payments.sendPayment({ paymentId: payment.id });
+    const sent = await ctx.payments.sendPayment({ paymentId: payment.id, user: manager });
 
     assert.strictEqual(sent.status, 'sent');
     assert.match(sent.external_ref, /^GW-\d{6}$/);
@@ -220,19 +238,19 @@ test('TC-SIM2-005: listagem devolve apenas os pagamentos do fornecedor', async (
   try {
     const alpha = approvedSupplier(ctx, { cnpj: '66777888000155' });
     const beta = approvedSupplier(ctx, { cnpj: '77888999000166' });
-    const payer = user({ id: 'ana', role: 'analyst', companyId: ctx.companies.acme });
+    const manager = payer(ctx);
 
-    const first = await ctx.payments.createPayment({ supplierId: alpha.id, amount: 300, user: payer });
-    const second = await ctx.payments.createPayment({ supplierId: alpha.id, amount: 700, user: payer });
-    await ctx.payments.createPayment({ supplierId: beta.id, amount: 900, user: payer });
+    const first = await ctx.payments.createPayment({ supplierId: alpha.id, amount: 300, user: manager });
+    const second = await ctx.payments.createPayment({ supplierId: alpha.id, amount: 700, user: manager });
+    await ctx.payments.createPayment({ supplierId: beta.id, amount: 900, user: manager });
 
-    const list = ctx.payments.listPaymentsBySupplier({ supplierId: alpha.id, user: payer });
+    const list = ctx.payments.listPaymentsBySupplier({ supplierId: alpha.id, user: reader(ctx) });
 
     assert.strictEqual(list.length, 2);
     assert.deepStrictEqual(list.map((item) => item.id), [first.id, second.id]);
     assert.deepStrictEqual(list.map((item) => item.amount), [300, 700]);
     for (const item of list) {
-      assert.strictEqual(item.company_id, payer.companyId);
+      assert.strictEqual(item.company_id, ctx.companies.acme);
     }
   } finally {
     ctx.close();
@@ -243,12 +261,12 @@ test('TC-SIM2-005b: usuario de outra empresa nao lista pagamentos alheios (FIND-
   const ctx = buildContext();
   try {
     const supplier = approvedSupplier(ctx, { cnpj: '66777888000155' });
-    const payer = user({ id: 'ana', role: 'analyst', companyId: ctx.companies.acme });
+    const manager = payer(ctx);
 
-    await ctx.payments.createPayment({ supplierId: supplier.id, amount: 300, user: payer });
-    await ctx.payments.createPayment({ supplierId: supplier.id, amount: 700, user: payer });
+    await ctx.payments.createPayment({ supplierId: supplier.id, amount: 300, user: manager });
+    await ctx.payments.createPayment({ supplierId: supplier.id, amount: 700, user: manager });
 
-    const intruder = user({ id: 'ext', role: 'manager', companyId: ctx.companies.globex });
+    const intruder = ctx.user({ id: 'ext', role: 'manager', companyId: ctx.companies.globex });
 
     assert.throws(
       () => ctx.payments.listPaymentsBySupplier({ supplierId: supplier.id, user: intruder }),
@@ -268,19 +286,19 @@ test('TC-SIM2-005c: cada empresa enxerga somente os proprios pagamentos (FIND-SI
       companyId: ctx.companies.globex
     });
 
-    const acmeUser = user({ id: 'ana', role: 'analyst', companyId: ctx.companies.acme });
-    const globexUser = user({ id: 'gil', role: 'analyst', companyId: ctx.companies.globex });
+    const acmePayer = payer(ctx, ctx.companies.acme);
+    const globexPayer = payer(ctx, ctx.companies.globex);
 
-    await ctx.payments.createPayment({ supplierId: acmeSupplier.id, amount: 300, user: acmeUser });
-    await ctx.payments.createPayment({ supplierId: globexSupplier.id, amount: 900, user: globexUser });
+    await ctx.payments.createPayment({ supplierId: acmeSupplier.id, amount: 300, user: acmePayer });
+    await ctx.payments.createPayment({ supplierId: globexSupplier.id, amount: 900, user: globexPayer });
 
     const acmeList = ctx.payments.listPaymentsBySupplier({
       supplierId: acmeSupplier.id,
-      user: acmeUser
+      user: reader(ctx, ctx.companies.acme)
     });
     const globexList = ctx.payments.listPaymentsBySupplier({
       supplierId: globexSupplier.id,
-      user: globexUser
+      user: reader(ctx, ctx.companies.globex)
     });
 
     assert.strictEqual(acmeList.length, 1);

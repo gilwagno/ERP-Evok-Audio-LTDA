@@ -112,4 +112,25 @@ function createCompany(db, name, now = new Date().toISOString()) {
   return db.get('SELECT * FROM companies WHERE id = ?', Number(result.lastInsertRowid));
 }
 
-module.exports = { openDatabase, createCompany };
+/**
+ * Provisiona um usuário na fonte confiável de identidade (APR-2026-008).
+ *
+ * Papel e empresa passam a existir somente aqui — nenhum serviço aceita esses
+ * atributos vindos do chamador.
+ *
+ * @param {object} db handle de banco.
+ * @param {{id: string, companyId: number, role: 'analyst'|'manager'}} spec
+ * @returns {object} registro persistido de `users`.
+ */
+function createUser(db, { id, companyId, role }, now = new Date().toISOString()) {
+  db.run(
+    'INSERT INTO users (id, company_id, role, created_at) VALUES (?, ?, ?, ?)',
+    String(id),
+    companyId,
+    role,
+    now
+  );
+  return db.get('SELECT * FROM users WHERE id = ?', String(id));
+}
+
+module.exports = { openDatabase, createCompany, createUser };

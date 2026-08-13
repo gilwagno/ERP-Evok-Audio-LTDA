@@ -2,21 +2,26 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { buildContext, user } = require('./support');
+const { buildContext } = require('./support');
 
 function approvedSupplier(ctx, { cnpj = '44555666000133', creditLimit = 20000 } = {}) {
   const supplier = ctx.suppliers.createSupplier({
     cnpj,
     name: 'Componentes Eletrônicos SA',
     companyId: ctx.companies.acme,
-    user: user({ id: 'ana', role: 'analyst', companyId: ctx.companies.acme })
+    user: ctx.user({ id: 'ana', role: 'analyst', companyId: ctx.companies.acme })
   });
 
   return ctx.approvals.approveSupplier({
     supplierId: supplier.id,
     creditLimit,
-    approver: user({ id: 'gerson', role: 'manager', companyId: ctx.companies.acme })
+    approver: ctx.user({ id: 'gerson', role: 'manager', companyId: ctx.companies.acme })
   });
+}
+
+/** Papel de escrita de pagamento: `manager` (APR-2026-008). */
+function payer(ctx) {
+  return ctx.user({ id: 'marina', role: 'manager', companyId: ctx.companies.acme });
 }
 
 // ---------------------------------------------------------------------------
@@ -30,11 +35,11 @@ test('TC-SIM2-004b: reenvio do mesmo pagamento nao produz nova movimentacao no g
     const payment = await ctx.payments.createPayment({
       supplierId: supplier.id,
       amount: 2500,
-      user: user({ id: 'ana', role: 'analyst', companyId: ctx.companies.acme })
+      user: payer(ctx)
     });
 
-    const first = await ctx.payments.sendPayment({ paymentId: payment.id });
-    const second = await ctx.payments.sendPayment({ paymentId: payment.id });
+    const first = await ctx.payments.sendPayment({ paymentId: payment.id, user: payer(ctx) });
+    const second = await ctx.payments.sendPayment({ paymentId: payment.id, user: payer(ctx) });
 
     // 1. exatamente uma movimentação no gateway
     assert.strictEqual(ctx.gateway.callsFor(payment.id).length, 1);
@@ -63,7 +68,7 @@ test('TC-SIM2-004c: gateway deduplica por chave de idempotencia estavel', async 
     const payment = await ctx.payments.createPayment({
       supplierId: supplier.id,
       amount: 1200,
-      user: user({ id: 'ana', role: 'analyst', companyId: ctx.companies.acme })
+      user: payer(ctx)
     });
 
     const first = await ctx.gateway.submitPayment({
@@ -98,10 +103,10 @@ test('TC-SIM2-004d: banco impede segunda tentativa aceita para o mesmo pagamento
     const payment = await ctx.payments.createPayment({
       supplierId: supplier.id,
       amount: 800,
-      user: user({ id: 'ana', role: 'analyst', companyId: ctx.companies.acme })
+      user: payer(ctx)
     });
 
-    await ctx.payments.sendPayment({ paymentId: payment.id });
+    await ctx.payments.sendPayment({ paymentId: payment.id, user: payer(ctx) });
 
     assert.throws(
       () => ctx.db.run(
@@ -118,22 +123,31 @@ test('TC-SIM2-004d: banco impede segunda tentativa aceita para o mesmo pagamento
   }
 });
 
-test('TC-SIM2-004e: enviar -> cancelar -> enviar nao gera segunda movimentacao', async () => {
+// APR-2026-007 alterou a premissa deste caso: cancelar pagamento `sent` deixou
+// de ser possível. O que se preserva da WAVE-C é a garantia material — reenviar
+// um pagamento já enviado NÃO gera segunda movimentação no gateway —, agora com
+// a tentativa de cancelamento sendo RECUSADA em vez de reabrir o pagamento.
+test('TC-SIM2-004e: enviar -> cancelar (recusado) -> reenviar nao gera segunda movimentacao', async () => {
   const ctx = buildContext();
   try {
     const supplier = approvedSupplier(ctx);
     const payment = await ctx.payments.createPayment({
       supplierId: supplier.id,
       amount: 400,
-      user: user({ id: 'ana', role: 'analyst', companyId: ctx.companies.acme })
+      user: payer(ctx)
     });
 
-    const first = await ctx.payments.sendPayment({ paymentId: payment.id });
-    ctx.payments.cancelPayment({ paymentId: payment.id });
-    const again = await ctx.payments.sendPayment({ paymentId: payment.id });
+    const first = await ctx.payments.sendPayment({ paymentId: payment.id, user: payer(ctx) });
+    assert.throws(
+      () => ctx.payments.cancelPayment({ paymentId: payment.id, user: payer(ctx) }),
+      /estorno é operação distinta/
+    );
+
+    const again = await ctx.payments.sendPayment({ paymentId: payment.id, user: payer(ctx) });
 
     assert.strictEqual(ctx.gateway.callsFor(payment.id).length, 1);
     assert.strictEqual(again.external_ref, first.external_ref);
+    assert.strictEqual(again.status, 'sent');
 
     const attempts = ctx.db.all(
       `SELECT * FROM payment_attempts WHERE payment_id = ? AND result = 'accepted'`,
@@ -156,7 +170,7 @@ test('TC-SIM2-001c: CNPJ duplicado na mesma empresa e recusado', () => {
       cnpj: '11222333000181',
       name: 'Metalúrgica Sul',
       companyId: ctx.companies.acme,
-      user: user({ id: 'ana', role: 'analyst', companyId: ctx.companies.acme })
+      user: ctx.user({ id: 'ana', role: 'analyst', companyId: ctx.companies.acme })
     });
 
     assert.throws(
@@ -164,7 +178,7 @@ test('TC-SIM2-001c: CNPJ duplicado na mesma empresa e recusado', () => {
         cnpj: '11222333000181',
         name: 'Metalúrgica Sul Filial',
         companyId: ctx.companies.acme,
-        user: user({ id: 'ana', role: 'analyst', companyId: ctx.companies.acme })
+        user: ctx.user({ id: 'ana', role: 'analyst', companyId: ctx.companies.acme })
       }),
       /CNPJ já cadastrado/
     );
@@ -186,7 +200,7 @@ test('TC-SIM2-001d: CNPJ duplicado em empresa diferente tambem e recusado (regra
       cnpj: '11222333000181',
       name: 'Metalúrgica Sul',
       companyId: ctx.companies.acme,
-      user: user({ id: 'ana', role: 'analyst', companyId: ctx.companies.acme })
+      user: ctx.user({ id: 'ana', role: 'analyst', companyId: ctx.companies.acme })
     });
 
     assert.throws(
@@ -194,7 +208,7 @@ test('TC-SIM2-001d: CNPJ duplicado em empresa diferente tambem e recusado (regra
         cnpj: '11222333000181',
         name: 'Metalúrgica Sul',
         companyId: ctx.companies.globex,
-        user: user({ id: 'gil', role: 'analyst', companyId: ctx.companies.globex })
+        user: ctx.user({ id: 'gil', role: 'analyst', companyId: ctx.companies.globex })
       }),
       /CNPJ já cadastrado/
     );
@@ -216,7 +230,7 @@ test('TC-SIM2-001e: unicidade de CNPJ e imposta pelo banco, nao apenas pelo serv
       cnpj: '11222333000181',
       name: 'Metalúrgica Sul',
       companyId: ctx.companies.acme,
-      user: user({ id: 'ana', role: 'analyst', companyId: ctx.companies.acme })
+      user: ctx.user({ id: 'ana', role: 'analyst', companyId: ctx.companies.acme })
     });
 
     assert.throws(
@@ -242,13 +256,13 @@ test('TC-SIM2-001f: CNPJs distintos continuam aceitos (nao-regressao)', () => {
       cnpj: '11222333000181',
       name: 'Metalúrgica Sul',
       companyId: ctx.companies.acme,
-      user: user({ id: 'ana', role: 'analyst', companyId: ctx.companies.acme })
+      user: ctx.user({ id: 'ana', role: 'analyst', companyId: ctx.companies.acme })
     });
     const b = ctx.suppliers.createSupplier({
       cnpj: '22333444000199',
       name: 'Cabos e Conectores ME',
       companyId: ctx.companies.globex,
-      user: user({ id: 'gil', role: 'analyst', companyId: ctx.companies.globex })
+      user: ctx.user({ id: 'gil', role: 'analyst', companyId: ctx.companies.globex })
     });
 
     assert.notStrictEqual(a.id, b.id);
@@ -265,11 +279,11 @@ test('TC-SIM2-003d: pagamentos concorrentes nao estouram o teto de credito', asy
   const ctx = buildContext();
   try {
     const supplier = approvedSupplier(ctx, { creditLimit: 10000 });
-    const payer = user({ id: 'ana', role: 'analyst', companyId: ctx.companies.acme });
+    const manager = payer(ctx);
 
     const results = await Promise.allSettled([
-      ctx.payments.createPayment({ supplierId: supplier.id, amount: 8000, user: payer }),
-      ctx.payments.createPayment({ supplierId: supplier.id, amount: 8000, user: payer })
+      ctx.payments.createPayment({ supplierId: supplier.id, amount: 8000, user: manager }),
+      ctx.payments.createPayment({ supplierId: supplier.id, amount: 8000, user: manager })
     ]);
 
     const accepted = results.filter((r) => r.status === 'fulfilled');
@@ -295,13 +309,13 @@ test('TC-SIM2-003e: nao-regressao sequencial do teto de credito', async () => {
   const ctx = buildContext();
   try {
     const supplier = approvedSupplier(ctx, { creditLimit: 10000 });
-    const payer = user({ id: 'ana', role: 'analyst', companyId: ctx.companies.acme });
+    const manager = payer(ctx);
 
-    await ctx.payments.createPayment({ supplierId: supplier.id, amount: 6000, user: payer });
-    await ctx.payments.createPayment({ supplierId: supplier.id, amount: 3000, user: payer });
+    await ctx.payments.createPayment({ supplierId: supplier.id, amount: 6000, user: manager });
+    await ctx.payments.createPayment({ supplierId: supplier.id, amount: 3000, user: manager });
 
     await assert.rejects(
-      () => ctx.payments.createPayment({ supplierId: supplier.id, amount: 5000, user: payer }),
+      () => ctx.payments.createPayment({ supplierId: supplier.id, amount: 5000, user: manager }),
       /limite de crédito/
     );
 

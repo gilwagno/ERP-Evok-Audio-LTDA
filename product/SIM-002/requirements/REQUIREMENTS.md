@@ -41,7 +41,8 @@ O sistema deve permitir criar um pagamento para um fornecedor aprovado,
 respeitando o teto de crédito concedido.
 
 - **BRs relacionadas:** BR-SUP-001 (fornecedor aprovado), BR-PAY-001 (teto de
-  crédito), BR-SEC-001 (isolamento por empresa)
+  crédito), BR-SEC-001 (isolamento por empresa), BR-SEC-002 (papel `manager`
+  resolvido no servidor)
 - **AC-SIM2-003:** Dado um fornecedor `approved` da empresa do usuário, quando é
   criado um pagamento de valor positivo cuja soma com os pagamentos existentes
   não excede o limite de crédito, então o pagamento é registrado com status
@@ -54,13 +55,19 @@ respeitando o teto de crédito concedido.
 O sistema deve permitir enviar um pagamento registrado ao gateway externo,
 armazenando a referência externa retornada e registrando a tentativa.
 
-- **BRs relacionadas:** BR-PAY-002 (idempotência de envio)
+- **BRs relacionadas:** BR-PAY-002 (idempotência de envio), BR-PAY-004 (recusa
+  do gateway), BR-SEC-002 (papel `manager` resolvido no servidor)
 - **AC-SIM2-004:** Dado um pagamento com status `created`, quando ele é enviado
-  ao gateway, então o pagamento passa a `sent`, recebe `external_ref` e a
-  tentativa é registrada. Dado um pagamento já enviado, quando o envio é
-  solicitado novamente, então o envio anterior é reaproveitado e nenhuma nova
-  movimentação é gerada no gateway.
-- **TC planejado:** TC-SIM2-004
+  ao gateway por um `manager` da empresa proprietária, então o pagamento passa a
+  `sent`, recebe `external_ref` e a tentativa é registrada. Dado um pagamento já
+  enviado, quando o envio é solicitado novamente, então o envio anterior é
+  reaproveitado e nenhuma nova movimentação é gerada no gateway.
+- **AC-SIM2-004b (BR-PAY-004):** Dado um pagamento em `created`, quando o
+  gateway recusa a submissão, então o pagamento passa a `failed`, permanece sem
+  `external_ref` e sem `sent_at`, e a tentativa é registrada com resultado
+  `failed`. O pagamento não conta como enviado e continua elegível a nova
+  tentativa.
+- **TC planejado:** TC-SIM2-004, TC-SIM2-009a, TC-SIM2-009b
 
 ## REQ-SIM2-005 — Listar pagamentos por fornecedor
 
@@ -88,3 +95,38 @@ fornecedor da própria empresa.
   `credit_limit` e `company_id`. Dado um usuário de outra empresa, então a
   consulta é recusada.
 - **TC planejado:** TC-SIM2-006
+
+## REQ-SIM2-007 — Cancelar pagamento não enviado
+
+O sistema deve permitir cancelar um pagamento ainda não enviado ao gateway,
+identificando o sujeito da operação. Requisito criado na remediação WAVE-D para
+dar origem documental a comportamento que já existia em código sem requisito
+(FIND-SIM-002-004), com a semântica fixada por APR-2026-007.
+
+- **BRs relacionadas:** BR-PAY-003 (cancelamento só antes do envio),
+  BR-SEC-001 (isolamento por empresa), BR-SEC-002 (sujeito resolvido no servidor)
+- **AC-SIM2-007:** Dado um pagamento em `created` da empresa do usuário, quando o
+  cancelamento é solicitado por usuário autenticado dessa empresa, então o
+  pagamento passa a `cancelled`. Dado um pagamento em `sent`, então o
+  cancelamento é recusado e status, `external_ref` e `sent_at` permanecem
+  inalterados. Dado um pagamento de outra empresa, então a operação é recusada
+  com erro genérico (`Pagamento não encontrado`). Dada uma chamada sem sujeito,
+  então é recusada.
+- **TC planejado:** TC-SIM2-007a, TC-SIM2-007b, TC-SIM2-007c, TC-SIM2-007d
+
+## REQ-SIM2-008 — Autorização por papel com identidade do servidor
+
+O sistema deve resolver papel e empresa do usuário em fonte confiável de
+identidade e aplicar a matriz de autorização de BR-SEC-002 em leituras e
+escritas. Requisito criado na remediação WAVE-D (FIND-SIM-002-008-A + OBS-002,
+decisão APR-2026-008).
+
+- **BRs relacionadas:** BR-SEC-002, BR-SEC-001
+- **AC-SIM2-008:** Dado um usuário cujo papel gravado é `analyst`, quando ele
+  tenta registrar ou enviar pagamento, então a operação é recusada — mesmo que o
+  payload declare `manager`. Dado um `manager` da empresa, então as duas
+  operações são permitidas. Dado `analyst` ou `manager`, então a consulta de
+  fornecedor e a listagem de pagamentos da própria empresa são permitidas. Dado
+  um identificador inexistente na fonte de identidade, então a operação é
+  recusada como falha de autenticação.
+- **TC planejado:** TC-SIM2-008a .. TC-SIM2-008g

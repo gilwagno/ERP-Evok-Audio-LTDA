@@ -1,5 +1,7 @@
 'use strict';
 
+const { createIdentityResolver, READ_ROLES, KNOWN_ROLES } = require('./identity');
+
 const CNPJ_PATTERN = /^\d{14}$/;
 const DUPLICATE_CNPJ_MESSAGE = 'CNPJ já cadastrado para outro fornecedor';
 
@@ -24,18 +26,28 @@ function createSupplierService(db) {
     throw new TypeError('createSupplierService: handle de banco sem primitiva transaction()');
   }
 
+  // APR-2026-008: papel e empresa vêm de `users`, nunca do payload do chamador.
+  const identity = createIdentityResolver(db);
+
   /**
    * Cadastra um fornecedor com status inicial `pending` na empresa DO USUÁRIO.
    *
-   * BR-SEC-001: a escrita tem sujeito e a empresa de destino é derivada de
-   * `user.companyId`; `companyId` é aceito apenas como redundância explícita e
-   * deve coincidir com a empresa do usuário.
+   * BR-SEC-001: a escrita tem sujeito e a empresa de destino é derivada da
+   * IDENTIDADE DO SERVIDOR (`users.company_id`); `companyId` é aceito apenas
+   * como redundância explícita e deve coincidir com a empresa do usuário.
+   *
+   * APR-2026-008: exige usuário autenticado com papel reconhecido; nenhuma BR
+   * restringe o cadastro a um papel específico, logo `analyst` e `manager`
+   * seguem habilitados.
    */
   function createSupplier({ cnpj, name, companyId, user }) {
-    if (!user || !Number.isInteger(user.companyId)) {
-      throw new Error('Usuário inválido');
-    }
-    if (companyId !== undefined && companyId !== user.companyId) {
+    const principal = identity.authorize(
+      user,
+      KNOWN_ROLES,
+      'Usuário não possui permissão para cadastrar fornecedores'
+    );
+
+    if (companyId !== undefined && companyId !== principal.companyId) {
       throw new Error('Cadastro de fornecedor em outra empresa não é permitido');
     }
     if (typeof cnpj !== 'string' || !CNPJ_PATTERN.test(cnpj)) {
@@ -47,8 +59,9 @@ function createSupplierService(db) {
 
     const now = new Date().toISOString();
 
-    // BR-SEC-001: a empresa de destino é SEMPRE a do usuário, nunca o parâmetro.
-    const targetCompanyId = user.companyId;
+    // BR-SEC-001: a empresa de destino é SEMPRE a do principal resolvido no
+    // banco, nunca o parâmetro nem o `companyId` do payload.
+    const targetCompanyId = principal.companyId;
 
     const supplierId = db.transaction(() => {
       const company = db.get('SELECT id FROM companies WHERE id = ?', targetCompanyId);
@@ -87,16 +100,21 @@ function createSupplierService(db) {
 
   /**
    * Consulta um fornecedor da empresa do usuário.
+   *
+   * APR-2026-008: leitura permitida a `analyst` e `manager`, papel verificado
+   * no banco (antes o papel era declarado no contrato e não verificado).
    */
   function getSupplier({ supplierId, user }) {
-    if (!user || !Number.isInteger(user.companyId)) {
-      throw new Error('Usuário inválido');
-    }
+    const principal = identity.authorize(
+      user,
+      READ_ROLES,
+      'Usuário não possui permissão para consultar fornecedores'
+    );
 
     const supplier = db.get(
       'SELECT * FROM suppliers WHERE id = ? AND company_id = ?',
       supplierId,
-      user.companyId
+      principal.companyId
     );
 
     if (!supplier) {
