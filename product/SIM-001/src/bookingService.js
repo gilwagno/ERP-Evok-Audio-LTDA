@@ -75,14 +75,10 @@ function createBookingService() {
    * REQ-SIM-002 — cancela uma reserva ativa. Cancelamentos com menos de 24h
    * de antecedência do início da reserva estão sujeitos a taxa sobre o valor.
    *
-   * BR-SIM-001 (SIM-001 VALIDATION DRILL v1 — escopo PARCIAL, ver
-   * remediation/cases/SIM-001-FIND-001/REMEDIATION_EVIDENCE_PACKAGE.md):
-   * apenas a verificação de posse (`userId === booking.userId`) foi
-   * implementada nesta remediação v1. O caminho `userRole === 'admin'`
-   * exigido pelo RETEST_SPECIFICATION do FIND-SIM-001-001 (item c) foi
-   * DELIBERADAMENTE ADIADO para v2 — este código NÃO satisfaz o finding
-   * original por completo e NÃO deve ser tratado como correção de
-   * produção completa.
+   * BR-SIM-001 (remediação v2 do FIND-SIM-001-001): uma reserva só pode ser
+   * cancelada pelo PRÓPRIO solicitante (`userId === booking.userId`) OU por
+   * usuário com papel `admin` (`userRole === 'admin'`). Qualquer outro
+   * chamador é rejeitado antes de qualquer mutação de estado.
    */
   function cancelBooking({ bookingId, userId, userRole, now }) {
     const booking = bookings.get(bookingId);
@@ -92,9 +88,10 @@ function createBookingService() {
     if (booking.status !== 'active') {
       throw new Error(`Booking "${bookingId}" is not active`);
     }
-    // BR-SIM-001 (parcial, v1 drill): rejeita cancelamento por quem não é o
-    // dono da reserva. Verificação de admin fica para v2.
-    if (userId !== booking.userId) {
+    // BR-SIM-001: autorizado = dono da reserva OU papel admin.
+    const isOwner = userId === booking.userId;
+    const isAdmin = userRole === 'admin';
+    if (!isOwner && !isAdmin) {
       throw new Error(
         `User "${userId}" is not authorized to cancel booking "${bookingId}"`
       );

@@ -131,12 +131,8 @@ test('TC-SIM-002b: cancelamento com menos de 24h de antecedencia cobra taxa de 2
   assert.equal(result.fee, 40);
 });
 
-// TC-SIM-005 — BR-SIM-001 / FIND-SIM-001-001 (SIM-001 VALIDATION DRILL v1,
-// escopo PARCIAL: cobre apenas o caminho "nao-dono", ver
-// remediation/cases/SIM-001-FIND-001/REMEDIATION_EVIDENCE_PACKAGE.md).
-// O cenario "admin cancela reserva de terceiro" (RETEST_SPECIFICATION item c)
-// fica deliberadamente FORA desta suite v1 e sera adicionado em v2.
-test('TC-SIM-005: nao-dono nao consegue cancelar reserva de outro usuario (BR-SIM-001, v1 drill)', () => {
+// TC-SIM-005 — BR-SIM-001 / FIND-SIM-001-001 (RETEST_SPECIFICATION item a)
+test('TC-SIM-005: nao-dono sem papel admin nao consegue cancelar reserva de outro usuario (BR-SIM-001)', () => {
   const service = createBookingService();
 
   const booking = service.createBooking({
@@ -163,8 +159,8 @@ test('TC-SIM-005: nao-dono nao consegue cancelar reserva de outro usuario (BR-SI
   assert.equal(list[0].status, 'active');
 });
 
-// TC-SIM-006 — BR-SIM-001 (SIM-001 VALIDATION DRILL v1)
-test('TC-SIM-006: dono consegue cancelar a propria reserva (BR-SIM-001, v1 drill)', () => {
+// TC-SIM-006 — BR-SIM-001 (RETEST_SPECIFICATION item b)
+test('TC-SIM-006: dono consegue cancelar a propria reserva (BR-SIM-001)', () => {
   const service = createBookingService();
 
   const booking = service.createBooking({
@@ -183,6 +179,36 @@ test('TC-SIM-006: dono consegue cancelar a propria reserva (BR-SIM-001, v1 drill
   });
 
   assert.equal(result.status, 'cancelled');
+});
+
+// TC-SIM-007 — BR-SIM-001 (RETEST_SPECIFICATION item c): admin cancela
+// reserva de terceiro. Cenario reprovado no reteste da v1; coberto na v2.
+test('TC-SIM-007: admin consegue cancelar reserva de outro usuario (BR-SIM-001)', () => {
+  const service = createBookingService();
+
+  const booking = service.createBooking({
+    roomId: 'room-a',
+    userId: 'user-1',
+    start: '2026-09-10T10:00:00Z',
+    end: '2026-09-10T12:00:00Z',
+    price: 200,
+  });
+
+  const result = service.cancelBooking({
+    bookingId: booking.id,
+    userId: 'user-99',
+    userRole: 'admin',
+    now: '2026-09-08T10:00:00Z',
+  });
+
+  assert.equal(result.status, 'cancelled');
+  assert.equal(result.fee, 0);
+  assert.equal(booking.status, 'cancelled', 'reserva deve virar cancelled');
+  assert.equal(booking.cancellation.cancelledBy, 'user-99');
+  assert.equal(booking.cancellation.cancelledByRole, 'admin');
+
+  const list = service.listBookings('room-a');
+  assert.equal(list.length, 0, 'reserva cancelada nao deve mais aparecer como ativa');
 });
 
 test('TC-SIM-002c: nao permite cancelar reserva ja cancelada', () => {

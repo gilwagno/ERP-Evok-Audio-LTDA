@@ -1,5 +1,15 @@
 # REMEDIATION_EVIDENCE_PACKAGE  (SanaCore → VeriCore)
 
+> **STATUS ATUAL: v2 entregue.** A seção `## v2 — resposta ao RETEST_FAILED`
+> (no fim deste arquivo) é a evidência corrente. Todo o conteúdo abaixo até
+> aquela seção é o **registro histórico da v1** (escopo parcial deliberado)
+> e do `RETEST_FAILED` que ela produziu — preservado intencionalmente como
+> evidência do drill, **não** como descrição do estado atual do código.
+
+---
+
+## v1 — registro histórico (escopo parcial, RETEST_FAILED)
+
 > **SIM-001 VALIDATION DRILL v1 — escopo intencionalmente parcial** (somente
 > verificação de dono; caminho admin propositalmente adiado para v2) para
 > exercitar o loop `RETEST_FAILED → IN_REMEDIATION → RETEST_PASSED` do
@@ -102,7 +112,7 @@ atualização de BUSINESS_RULES.md / requirements referente a BR-SIM-001 fica
 para quando a remediação completa — v2, com o caminho admin — for
 entregue).
 
-COMMIT_HASH:            # preenchido após commit (ver abaixo)
+COMMIT_HASH: 3ca9dd9
 BRANCH: sana/SIM-001/FIND-001
 RESIDUAL_RISK: ALTO — o finding original (broken access control / IDOR)
 permanece PARCIALMENTE ABERTO. O caminho `admin` do RETEST_SPECIFICATION
@@ -115,3 +125,121 @@ FIND-SIM-001-001 (coretriad/handoffs/SIM-001/REMEDIATION_CASE-SIM-001-CASE-001.m
 itens a-e). Espera-se que o item (c) — "admin cancela reserva de terceiro" —
 FALHE nesta v1, produzindo `RETEST_FAILED`, o que é o resultado esperado e
 desejado deste drill de validação do state machine CoreTriad.
+
+---
+
+## v2 — resposta ao RETEST_FAILED
+
+CASE_ID: SIM-001-CASE-001
+FINDING_ID: FIND-SIM-001-001
+BRANCH: sana/SIM-001/FIND-001
+SUPERSEDES: remediação v1 (commit `3ca9dd9`)
+
+### O QUE O RETEST v1 REPROVOU
+
+Reteste independente executado pela VeriCore sobre o commit `3ca9dd9`
+(`AUDIT_COMMIT` da v1), conforme RETEST_SPECIFICATION do FIND-SIM-001-001:
+
+| Item | Cenário | Resultado v1 |
+|---|---|---|
+| (a) | não-dono (`user-2`, role `user`) cancela reserva de `user-1` | **OK** — ERROR "User user-2 is not authorized..."; reserva permanece `active` |
+| (b) | dono (`user-1`) cancela a própria reserva | **OK** — SUCCESS |
+| (c) | admin (`userId: 'user-99'`, `userRole: 'admin'`) cancela reserva de `user-1` | **FALHOU** — ERROR "User user-99 is not authorized to cancel booking BKG-1"; esperado SUCESSO |
+
+Veredito do reteste v1: `RETEST_FAILED` no item (c). A guard clause da v1
+verificava apenas posse (`userId !== booking.userId`), rejeitando também o
+administrador — contrariando BR-SIM-001, que autoriza o cancelamento pelo
+**próprio solicitante OU por usuário com papel admin**. Complementarmente, a
+suíte v1 (8/8 verde) não continha nenhum teste do caminho admin, razão pela
+qual a lacuna não foi capturada pela própria remediação.
+
+### CORREÇÃO APLICADA (v2)
+
+`product/SIM-001/src/bookingService.js`, função `cancelBooking`: a guard
+clause de autorização passou a avaliar os dois caminhos previstos por
+BR-SIM-001, mantendo a posição original (antes de qualquer mutação de
+estado):
+
+```js
+// BR-SIM-001: autorizado = dono da reserva OU papel admin.
+const isOwner = userId === booking.userId;
+const isAdmin = userRole === 'admin';
+if (!isOwner && !isAdmin) {
+  throw new Error(
+    `User "${userId}" is not authorized to cancel booking "${bookingId}"`
+  );
+}
+```
+
+Os comentários que declaravam o adiamento deliberado do caminho admin para
+v2 foram removidos/atualizados — no JSDoc de `cancelBooking`, na guard clause
+e nos comentários de TC-SIM-005/TC-SIM-006 na suíte de testes — pois não
+descrevem mais o comportamento do código.
+
+FILES_CHANGED (v2):
+- `product/SIM-001/src/bookingService.js` (guard clause dono-OU-admin;
+  comentários de escopo parcial removidos)
+- `product/SIM-001/tests/booking.test.js` (TC-SIM-007 adicionado;
+  comentários de escopo parcial atualizados)
+- `remediation/cases/SIM-001-FIND-001/REMEDIATION_EVIDENCE_PACKAGE.md`
+  (esta seção)
+
+TESTS_ADDED (v2):
+- **TC-SIM-007** — admin (`userId: 'user-99'`, `userRole: 'admin'`) cancela
+  reserva de `user-1` → sucesso; `status === 'cancelled'`, `fee === 0`,
+  `cancellation.cancelledBy === 'user-99'`,
+  `cancellation.cancelledByRole === 'admin'`, e a reserva deixa de aparecer
+  em `listBookings('room-a')`. Cobre o RETEST_SPECIFICATION item (c), o
+  cenário exato que reprovou a v1.
+
+TESTS_CHANGED (v2): nenhuma asserção alterada. Apenas os títulos/comentários
+de TC-SIM-005 e TC-SIM-006 foram atualizados para remover a rotulagem de
+"v1 drill / escopo parcial"; TC-SIM-005 explicita agora que o rejeitado é o
+"não-dono **sem papel admin**".
+
+TEST_RESULTS (v2): `node --test "product/SIM-001/tests/**/*.test.js"` →
+**9 testes, 9 pass, 0 fail** (as 8 da v1 + TC-SIM-007). Nenhum teste
+pré-existente regrediu.
+
+REMEDIATION_COMMIT (v2): `db5c1ef`
+
+SYSTEMIC_FIX_REQUIRED: **não — ambos os caminhos (dono e admin) estão
+implementados**, e a suíte cobre os três cenários (a, b, c) do
+RETEST_SPECIFICATION. A causa-raiz registrada na triagem (ausência de regra
+de autorização central em `cancelBooking`, sem camada compensatória) está
+tratada integralmente na única função afetada.
+
+RESIDUAL_RISK (v2): MÉDIO, de natureza distinta do finding remediado. O
+SECURITY_IMPACT do finding original observa que `userRole` é **autodeclarado
+pelo chamador** — `cancelBooking` confia no parâmetro recebido. Isso é
+inerente ao contrato atual da API do SIM-001 (serviço em memória, sem camada
+de autenticação) e está **fora do blast radius do FIND-SIM-001-001**: elevar
+a origem do papel para uma sessão autenticada exige mudança de arquitetura do
+produto e deve ser registrado como finding/decisão própria pela VeriCore, não
+absorvido silenciosamente aqui.
+
+REGRESSION_RISK: baixo. A alteração relaxa uma condição de rejeição já
+existente para um subconjunto explícito (`userRole === 'admin'`); nenhum
+caminho previamente autorizado passou a ser bloqueado. `createBooking` e
+`listBookings` não foram tocados.
+
+ARCHITECTURE_IMPACT: nenhum.
+DATABASE_IMPACT: nenhum (serviço em memória).
+API_IMPACT: a assinatura de `cancelBooking` permanece inalterada. O
+parâmetro `userRole`, que na v1 era apenas metadata, passa a ser
+semanticamente significativo para a decisão de autorização.
+SECURITY_CHECKS: cobertura por teste dos três cenários de autorização (nega
+não-dono, permite dono, permite admin), incluindo asserção de que a reserva
+permanece `active` no caminho negado. Sem varredura automatizada aplicável a
+este serviço de escopo simulado.
+DOCUMENTATION_UPDATED: este pacote de evidência. BR-SIM-001 já descrevia o
+comportamento agora implementado — o código foi alinhado à regra existente,
+sem alteração de regra de negócio.
+
+STATUS: `REMEDIATION_COMPLETE`. O finding FIND-SIM-001-001 permanece
+`RETEST_REQUIRED`. SanaCore **não** declara `RETEST_PASSED` nem
+`FINDING CLOSED` — autoridade exclusiva da VeriCore (CLAUDE.md, Regras 3 e 4).
+
+RETEST_INSTRUCTIONS (v2): reexecutar o RETEST_SPECIFICATION completo do
+FIND-SIM-001-001 (itens a-e) contra o `REMEDIATION_COMMIT` v2 acima. Espera-se
+SUCESSO no item (c), mantidos os resultados dos itens (a) e (b).
