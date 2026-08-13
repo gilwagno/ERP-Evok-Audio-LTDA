@@ -12,7 +12,8 @@
  */
 
 const LATE_CANCEL_WINDOW_MS = 24 * 60 * 60 * 1000;
-const LATE_CANCEL_FEE_RATE = 0.20;
+// BR-SIM-002: cancelamento tardio (<24h) cobra 10% do valor da reserva.
+const LATE_CANCEL_FEE_RATE = 0.10;
 
 function toDate(value, fieldName) {
   const date = value instanceof Date ? value : new Date(value);

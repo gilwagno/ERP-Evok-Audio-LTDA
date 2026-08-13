@@ -108,8 +108,8 @@ test('TC-SIM-002: cancelamento com 24h ou mais de antecedencia nao cobra taxa', 
   assert.equal(result.fee, 0);
 });
 
-// TC-SIM-002b — REQ-SIM-002 / AC-SIM-002 (cancelamento tardio, com taxa)
-test('TC-SIM-002b: cancelamento com menos de 24h de antecedencia cobra taxa de 20%', () => {
+// TC-SIM-002b — REQ-SIM-002 / AC-SIM-002 / BR-SIM-002 (cancelamento tardio, com taxa)
+test('TC-SIM-002b: cancelamento com menos de 24h de antecedencia cobra taxa de 10% (BR-SIM-002)', () => {
   const service = createBookingService();
 
   const booking = service.createBooking({
@@ -128,7 +128,30 @@ test('TC-SIM-002b: cancelamento com menos de 24h de antecedencia cobra taxa de 2
   });
 
   assert.equal(result.status, 'cancelled');
-  assert.equal(result.fee, 40);
+  assert.equal(result.fee, 20);
+});
+
+// TC-SIM-002d — REQ-SIM-002 / AC-SIM-002 / BR-SIM-002 (fronteira exata de 24h, sem taxa)
+test('TC-SIM-002d: cancelamento com exatamente 24h de antecedencia nao cobra taxa', () => {
+  const service = createBookingService();
+
+  const booking = service.createBooking({
+    roomId: 'room-a',
+    userId: 'user-1',
+    start: '2026-09-10T10:00:00Z',
+    end: '2026-09-10T12:00:00Z',
+    price: 200,
+  });
+
+  const result = service.cancelBooking({
+    bookingId: booking.id,
+    userId: 'user-1',
+    userRole: 'user',
+    now: '2026-09-09T10:00:00Z',
+  });
+
+  assert.equal(result.status, 'cancelled');
+  assert.equal(result.fee, 0);
 });
 
 test('TC-SIM-002c: nao permite cancelar reserva ja cancelada', () => {
