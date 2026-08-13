@@ -91,3 +91,14 @@ Trilha das chamadas efetuadas ao gateway de pagamento.
   com `WHERE result = 'accepted'`: no máximo uma tentativa aceita por pagamento
   (BR-PAY-002, defesa em profundidade). Tentativas `failed` permanecem sem
   restrição para preservar a trilha de retentativas.
+
+**Uso normativo (BR-PAY-005 / APR-2026-013)**
+
+As linhas com `result = 'failed'` são a **contagem oficial e persistente** de
+submissões recusadas de um pagamento. O limite de reenvio (máximo 3 reenvios,
+teto de 4 submissões por pagamento) é avaliado por essa contagem — não existe
+coluna contadora em `payments`. A escolha é deliberada: um contador separado
+seria uma segunda representação do mesmo fato e poderia divergir da trilha.
+Consequência operacional: **apagar linhas desta tabela reabre o direito de
+reenvio**; a tabela é trilha de auditoria e não deve sofrer expurgo sem decisão
+registrada.

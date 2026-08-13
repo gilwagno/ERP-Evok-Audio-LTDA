@@ -3,8 +3,25 @@
 const {
   createIdentityResolver,
   READ_ROLES,
-  PAYMENT_WRITE_ROLES
+  PAYMENT_WRITE_ROLES,
+  PAYMENT_CANCEL_ROLES
 } = require('./identity');
+
+/**
+ * APR-2026-013 — limite de retentativa de pagamento em `failed`.
+ *
+ * A decisão humana é "limite de 3 tentativas de REENVIO ao gateway para um
+ * pagamento em `failed`". O envio original não é reenvio: ele é o que leva o
+ * pagamento a `failed`. Logo o teto de submissões ao gateway por pagamento é
+ * `1 + 3 = 4`, e a 4ª retentativa (5ª chamada) é recusada pelo SERVIÇO, sem
+ * tocar o gateway.
+ *
+ * O limite incide sobre chamadas EXPLÍCITAS de `sendPayment`: não há, e não
+ * deve haver, retentativa automática (a decisão veda "retentativa automática
+ * ilimitada"; este serviço não implementa retentativa automática alguma).
+ */
+const MAX_RESEND_ATTEMPTS = 3;
+const MAX_GATEWAY_SUBMISSIONS = 1 + MAX_RESEND_ATTEMPTS;
 
 const CREATE_DENIED_MESSAGE = 'Usuário não possui permissão para registrar pagamentos';
 const SEND_DENIED_MESSAGE = 'Usuário não possui permissão para enviar pagamentos';
@@ -13,6 +30,9 @@ const CANCEL_DENIED_MESSAGE = 'Usuário não possui permissão para cancelar pag
 const CANCEL_SENT_MESSAGE =
   'Pagamento já enviado não pode ser cancelado; estorno é operação distinta';
 const CANCEL_STATE_MESSAGE = 'Somente pagamento em "created" pode ser cancelado';
+const RETRY_EXHAUSTED_MESSAGE =
+  `Pagamento em falha definitiva: limite de ${MAX_RESEND_ATTEMPTS} reenvios ao gateway ` +
+  'esgotado; reenvio automático não será feito e a regularização exige ação manual';
 
 /**
  * Serviço de pagamentos a fornecedores.
@@ -85,6 +105,26 @@ function createPaymentService({ db, gateway }) {
     }
 
     return supplier;
+  }
+
+  /**
+   * Quantas submissões deste pagamento ao gateway terminaram em recusa.
+   *
+   * APR-2026-013: a contagem é PERSISTENTE e sai da trilha `payment_attempts`,
+   * que já existe e já registra exatamente o evento limitado (uma linha por
+   * submissão). Optou-se por derivar da trilha em vez de criar uma coluna
+   * `retry_count` em `payments` justamente para não ter dois registros da mesma
+   * verdade — um contador e uma trilha — que podem divergir; a trilha é o fato,
+   * o contador seria uma cópia dele. Como a trilha sobrevive ao processo, o
+   * limite vale entre execuções, e não apenas dentro de uma sessão.
+   */
+  function countFailedAttempts(paymentId) {
+    const row = db.get(
+      `SELECT COUNT(*) AS total FROM payment_attempts
+        WHERE payment_id = ? AND result = 'failed'`,
+      paymentId
+    );
+    return row.total;
   }
 
   function sumCommittedAmount(supplierId) {
@@ -162,6 +202,15 @@ function createPaymentService({ db, gateway }) {
     // devolve a referência externa e o instante já gravados.
     if (payment.status === 'sent' && payment.external_ref) {
       return payment;
+    }
+
+    // APR-2026-013: pagamento em `failed` que já esgotou o limite de reenvios é
+    // `failed` DEFINITIVO. A recusa acontece ANTES de tocar o gateway e antes de
+    // qualquer escrita: nenhuma nova linha em `payment_attempts`, nenhuma
+    // mudança de status — o pagamento permanece `failed`.
+    if (payment.status === 'failed'
+      && countFailedAttempts(payment.id) >= MAX_GATEWAY_SUBMISSIONS) {
+      throw new Error(RETRY_EXHAUSTED_MESSAGE);
     }
 
     const now = new Date().toISOString();
@@ -256,9 +305,14 @@ function createPaymentService({ db, gateway }) {
    *
    * APR-2026-008/BR-SEC-001: exige sujeito autenticado e só alcança pagamento
    * da própria empresa.
+   *
+   * APR-2026-012: cancelar é privativo de `manager`, papel verificado no BANCO.
+   * `analyst` é recusado ainda que seja da empresa correta — cancelar libera
+   * crédito comprometido (`sumCommittedAmount`) e por isso tem a mesma alçada
+   * das demais escritas de pagamento.
    */
   function cancelPayment({ paymentId, user }) {
-    const principal = identity.authorize(user, READ_ROLES, CANCEL_DENIED_MESSAGE);
+    const principal = identity.authorize(user, PAYMENT_CANCEL_ROLES, CANCEL_DENIED_MESSAGE);
     const payment = loadPaymentInTenant(paymentId, principal);
 
     if (payment.status === 'sent') {
@@ -276,4 +330,4 @@ function createPaymentService({ db, gateway }) {
   return { createPayment, sendPayment, listPaymentsBySupplier, cancelPayment };
 }
 
-module.exports = { createPaymentService };
+module.exports = { createPaymentService, MAX_RESEND_ATTEMPTS, MAX_GATEWAY_SUBMISSIONS };

@@ -27,13 +27,26 @@ informando `cnpj` e `name`. O fornecedor é sempre criado na empresa do usuário
 O sistema deve permitir aprovar um fornecedor, concedendo-lhe um limite de
 crédito, desde que o aprovador possua alçada compatível com o valor concedido.
 
-- **BRs relacionadas:** BR-APR-001 (alçada), BR-SEC-001 (isolamento por empresa)
+- **BRs relacionadas:** BR-APR-001 (alçada), BR-SEC-001 (isolamento por empresa),
+  BR-SEC-002 e BR-SEC-003 (papel, empresa e autoria resolvidos no servidor)
 - **AC-SIM2-002:** Dado um fornecedor `pending` da mesma empresa do aprovador,
   quando um `analyst` aprova com limite dentro da sua alçada, então o fornecedor
   passa a `approved` com o limite concedido. Quando o limite excede a alçada do
   `analyst`, então a aprovação é recusada e o fornecedor permanece `pending`.
   Quando um `manager` aprova, qualquer limite dentro da política é aceito.
-- **TC planejado:** TC-SIM2-002
+- **AC-SIM2-002b (BR-SEC-003 / APR-2026-011):** Dado um usuário cujo papel
+  gravado em `users` é `analyst`, quando ele solicita aprovação declarando
+  `role: 'manager'` no payload com limite acima de R$ 10.000,00, então a
+  aprovação é **recusada** por alçada e o fornecedor permanece `pending`, com
+  `credit_limit = 0`, `approved_by` e `approved_at` nulos. Dado um `manager`
+  gravado, então a aprovação acima do teto é aceita. Dado um identificador
+  inexistente em `users`, então a operação é recusada como falha de
+  **autenticação**. Dado um `companyId` forjado no payload apontando para outra
+  empresa, então o fornecedor é inalcançável (`Fornecedor não encontrado`). Em
+  toda aprovação aceita, `approved_by` recebe a identidade **resolvida**, como
+  texto.
+- **TC planejado:** TC-SIM2-002, TC-SIM2-002e .. TC-SIM2-002i,
+  TC-SIM2-014a .. TC-SIM2-014e
 
 ## REQ-SIM2-003 — Criar pagamento
 
@@ -66,8 +79,19 @@ armazenando a referência externa retornada e registrando a tentativa.
   gateway recusa a submissão, então o pagamento passa a `failed`, permanece sem
   `external_ref` e sem `sent_at`, e a tentativa é registrada com resultado
   `failed`. O pagamento não conta como enviado e continua elegível a nova
-  tentativa.
-- **TC planejado:** TC-SIM2-004, TC-SIM2-009a, TC-SIM2-009b
+  tentativa, **dentro do limite de AC-SIM2-004c**.
+- **AC-SIM2-004c (BR-PAY-005 / APR-2026-013):** Dado um pagamento em `failed`,
+  quando o envio é solicitado explicitamente pela 1ª, 2ª e 3ª vez após a falha
+  original, então cada solicitação alcança o gateway e é registrada na trilha de
+  tentativas. Quando é solicitado o 4º reenvio, então a solicitação é **recusada
+  pelo próprio sistema**, sem chamada ao gateway e sem nova tentativa
+  registrada, com mensagem que declara a exigência de **ação manual**; o
+  pagamento permanece `failed`, sem `external_ref` e sem `sent_at`. Dado um
+  reenvio aceito **dentro** do limite, então o pagamento passa a `sent`
+  normalmente. A contagem é persistente: reinício da aplicação não a reinicia.
+  O sistema não executa reenvio automático em nenhuma hipótese.
+- **TC planejado:** TC-SIM2-004, TC-SIM2-009a, TC-SIM2-009b,
+  TC-SIM2-013a .. TC-SIM2-013d
 
 ## REQ-SIM2-005 — Listar pagamentos por fornecedor
 
@@ -103,16 +127,24 @@ identificando o sujeito da operação. Requisito criado na remediação WAVE-D p
 dar origem documental a comportamento que já existia em código sem requisito
 (FIND-SIM-002-004), com a semântica fixada por APR-2026-007.
 
-- **BRs relacionadas:** BR-PAY-003 (cancelamento só antes do envio),
-  BR-SEC-001 (isolamento por empresa), BR-SEC-002 (sujeito resolvido no servidor)
+- **BRs relacionadas:** BR-PAY-003 (cancelamento só antes do envio, papel
+  `manager` por APR-2026-012), BR-SEC-001 (isolamento por empresa), BR-SEC-002 e
+  BR-SEC-003 (papel e sujeito resolvidos no servidor)
 - **AC-SIM2-007:** Dado um pagamento em `created` da empresa do usuário, quando o
-  cancelamento é solicitado por usuário autenticado dessa empresa, então o
+  cancelamento é solicitado por um `manager` dessa empresa, então o
   pagamento passa a `cancelled`. Dado um pagamento em `sent`, então o
   cancelamento é recusado e status, `external_ref` e `sent_at` permanecem
   inalterados. Dado um pagamento de outra empresa, então a operação é recusada
   com erro genérico (`Pagamento não encontrado`). Dada uma chamada sem sujeito,
   então é recusada.
-- **TC planejado:** TC-SIM2-007a, TC-SIM2-007b, TC-SIM2-007c, TC-SIM2-007d
+- **AC-SIM2-007b (APR-2026-012):** Dado um usuário cujo papel gravado é
+  `analyst`, **ainda que pertença à empresa proprietária** do pagamento, quando
+  ele solicita o cancelamento de um pagamento em `created`, então a operação é
+  recusada por falta de permissão e o pagamento permanece `created`. O mesmo
+  vale se o payload declarar `role: 'manager'`. Dado um `manager` gravado da
+  empresa, então o cancelamento é aceito.
+- **TC planejado:** TC-SIM2-007a, TC-SIM2-007b, TC-SIM2-007c, TC-SIM2-007d,
+  TC-SIM2-012a, TC-SIM2-012b
 
 ## REQ-SIM2-008 — Autorização por papel com identidade do servidor
 
@@ -121,7 +153,12 @@ identidade e aplicar a matriz de autorização de BR-SEC-002 em leituras e
 escritas. Requisito criado na remediação WAVE-D (FIND-SIM-002-008-A + OBS-002,
 decisão APR-2026-008).
 
-- **BRs relacionadas:** BR-SEC-002, BR-SEC-001
+Estendido na WAVE-E (APR-2026-011 e APR-2026-012): a matriz passa a cobrir
+**todas** as operações do produto — inclusive aprovar fornecedor e cancelar
+pagamento —, de modo que não subsista nenhum ponto de decisão de papel alimentado
+pelo payload (BR-SEC-003).
+
+- **BRs relacionadas:** BR-SEC-002, BR-SEC-003, BR-SEC-001
 - **AC-SIM2-008:** Dado um usuário cujo papel gravado é `analyst`, quando ele
   tenta registrar ou enviar pagamento, então a operação é recusada — mesmo que o
   payload declare `manager`. Dado um `manager` da empresa, então as duas
@@ -129,4 +166,10 @@ decisão APR-2026-008).
   fornecedor e a listagem de pagamentos da própria empresa são permitidas. Dado
   um identificador inexistente na fonte de identidade, então a operação é
   recusada como falha de autenticação.
-- **TC planejado:** TC-SIM2-008a .. TC-SIM2-008g
+- **AC-SIM2-008b (BR-SEC-003):** Dada qualquer operação do produto — cadastrar,
+  aprovar, criar, enviar, cancelar, consultar, listar —, quando o payload
+  declara papel ou empresa divergentes de `users`, então o declarado é ignorado
+  e vale exclusivamente o registro de identidade; nenhuma operação decide
+  autorização por atributo do payload.
+- **TC planejado:** TC-SIM2-008a .. TC-SIM2-008g, TC-SIM2-014a, TC-SIM2-014d,
+  TC-SIM2-014e, TC-SIM2-012b

@@ -16,6 +16,25 @@ const READ_ROLES = Object.freeze(['analyst', 'manager']);
 /** Papéis autorizados a ESCREVER pagamentos: criar e enviar (APR-2026-008). */
 const PAYMENT_WRITE_ROLES = Object.freeze(['manager']);
 
+/**
+ * Papéis autorizados a CANCELAR pagamento em `created` (APR-2026-012).
+ *
+ * A decisão humana é expressa: "apenas o papel `manager` pode cancelar
+ * pagamento em estado `created` (...). Não estender a `analyst`". Constante
+ * própria — e não reuso de `PAYMENT_WRITE_ROLES` — porque a coincidência de
+ * conteúdo é contingente: são duas normas distintas (APR-2026-008 e
+ * APR-2026-012) e uma pode mudar sem a outra.
+ */
+const PAYMENT_CANCEL_ROLES = Object.freeze(['manager']);
+
+/**
+ * Papéis com poder de aprovar fornecedor (APR-2026-011, que estende o padrão
+ * da APR-2026-008 à aprovação). Ambos aprovam; a ALÇADA por valor é decidida
+ * pela BR-APR-001 dentro do `approvalService`, sempre sobre o papel resolvido
+ * no banco.
+ */
+const APPROVAL_ROLES = Object.freeze(['analyst', 'manager']);
+
 /** Papéis reconhecidos pelo sistema (espelha o CHECK de `users.role`). */
 const KNOWN_ROLES = Object.freeze(['analyst', 'manager']);
 
@@ -84,5 +103,7 @@ module.exports = {
   createIdentityResolver,
   READ_ROLES,
   PAYMENT_WRITE_ROLES,
+  PAYMENT_CANCEL_ROLES,
+  APPROVAL_ROLES,
   KNOWN_ROLES
 };

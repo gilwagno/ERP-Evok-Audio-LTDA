@@ -28,6 +28,9 @@ crédito concedido:
 
 Aprovações solicitadas por papel sem alçada suficiente devem ser recusadas.
 
+O papel que seleciona a alçada é o papel **resolvido no servidor** (BR-SEC-002),
+nunca o declarado pelo solicitante — ver BR-SEC-003.
+
 ## BR-PAY-001 — Teto de crédito do fornecedor
 
 A soma dos pagamentos válidos de um fornecedor não pode, em nenhum momento,
@@ -62,8 +65,14 @@ fato do envio (status, referência externa e instante) permanece intacto.
 
 O cancelamento é operação de escrita com sujeito e sujeita a BR-SEC-001.
 
-**Lacuna normativa conhecida:** APR-2026-007 não arbitrou papel específico para
-o cancelamento; hoje exige-se usuário autenticado da empresa proprietária.
+**Papel exigido (origem: APR-2026-012):** apenas `manager` cancela pagamento em
+`created`. `analyst` é recusado **ainda que pertença à empresa proprietária** do
+pagamento — a recusa é de alçada, não de isolamento. Razão registrada na decisão:
+cancelar libera crédito comprometido, e por isso tem a mesma alçada das demais
+escritas de pagamento. O papel é verificado no servidor (BR-SEC-002/BR-SEC-003).
+
+*(A "lacuna normativa" antes anotada aqui — APR-2026-007 não ter arbitrado papel
+— foi encerrada pela APR-2026-012.)*
 
 ## BR-SEC-002 — Papel e empresa vêm do servidor (origem: APR-2026-008)
 
@@ -78,6 +87,8 @@ Matriz de autorização de pagamentos:
 |---|---|---|
 | Registrar pagamento | escrita | `manager` |
 | Enviar pagamento ao gateway | escrita | `manager` |
+| Cancelar pagamento em `created` | escrita | `manager` (APR-2026-012) |
+| Aprovar fornecedor | escrita | `analyst` até R$ 10.000,00; `manager` sem teto (APR-2026-011 + BR-APR-001) |
 | Consultar fornecedor | leitura | `analyst` ou `manager` |
 | Listar pagamentos | leitura | `analyst` ou `manager` |
 
@@ -90,4 +101,48 @@ Quando o gateway recusa a submissão, o pagamento assume o estado `failed` —
 jamais `sent`. A recusa é causa distinta de cancelamento e deve ser rastreável
 separadamente: a tentativa fica registrada com resultado `failed` e o pagamento
 não conta como enviado (sem referência externa e sem instante de envio). Um
-pagamento em `failed` permanece elegível a nova tentativa de envio.
+pagamento em `failed` permanece elegível a nova tentativa de envio, **dentro do
+limite da BR-PAY-005**.
+
+## BR-SEC-003 — Procedência do papel vale para TODAS as operações (origem: APR-2026-011)
+
+A BR-SEC-002 não é uma regra do módulo de pagamentos: é regra do produto. Toda
+decisão de autorização — inclusive a **alçada de aprovação de fornecedor**
+(BR-APR-001) — resolve papel, empresa e identidade do sujeito na mesma fonte
+confiável (`users`). Consequências normativas:
+
+1. `role` declarado no payload não tem efeito em nenhuma operação. Quem é
+   `analyst` em `users` está sujeito ao teto do analista mesmo declarando-se
+   `manager`.
+2. A empresa que delimita o alcance da operação (BR-SEC-001) é a do registro de
+   identidade, nunca a do payload.
+3. A autoria registrada (`approved_by`, `created_by`) é a identidade resolvida,
+   não a afirmada — a trilha registra quem o sujeito **é**, não o que declarou
+   ser.
+4. Identificador sem correspondência em `users` é falha de **autenticação**,
+   anterior e distinta de qualquer questão de alçada.
+
+Vínculo normativo: Regra 24 do `CLAUDE.md`; APR-2026-011 estende expressamente a
+APR-2026-008 à aprovação, encerrando a fragmentação de norma de papel entre
+operações.
+
+## BR-PAY-005 — Limite de reenvio de pagamento em `failed` (origem: APR-2026-013)
+
+Um pagamento em `failed` admite no máximo **3 reenvios** ao gateway. O envio
+original não é reenvio: é o ato que produz o `failed`. O teto de submissões ao
+gateway por pagamento é, portanto, **4** (1 envio + 3 reenvios).
+
+Esgotado o limite, o pagamento é **`failed` definitivo**: nova solicitação de
+envio é recusada pelo próprio sistema, sem tocar o gateway, com mensagem que
+declara a exigência de **ação manual**. O status permanece `failed` e nenhuma
+nova tentativa é registrada.
+
+Não existe retentativa **automática**: o limite incide sobre solicitações
+explícitas de envio. O sistema nunca reenvia por conta própria.
+
+A contagem é **persistente** — vive na trilha de tentativas, não na memória do
+processo — de modo que o limite não se reinicia com reinício de aplicação.
+
+Um reenvio aceito **dentro** do limite conclui normalmente: o pagamento vai a
+`sent`, com referência externa e instante de envio, e a BR-PAY-002 volta a
+governar as solicitações seguintes.
