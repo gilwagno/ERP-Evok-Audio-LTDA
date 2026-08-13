@@ -131,6 +131,176 @@ test('TC-SIM-002b: cancelamento com menos de 24h de antecedencia cobra taxa de 2
   assert.equal(result.fee, 40);
 });
 
+// TC-SIM-003 — REQ-SIM-003 / AC-SIM-003 / BR-SIM-003 (nao sobreposicao)
+test('TC-SIM-003a: rejeita reserva com sobreposicao parcial no inicio', () => {
+  const service = createBookingService();
+
+  service.createBooking({
+    roomId: 'room-a',
+    userId: 'user-1',
+    start: '2026-09-01T10:00:00Z',
+    end: '2026-09-01T12:00:00Z',
+    price: 100,
+  });
+
+  assert.throws(
+    () =>
+      service.createBooking({
+        roomId: 'room-a',
+        userId: 'user-2',
+        start: '2026-09-01T09:00:00Z',
+        end: '2026-09-01T11:00:00Z',
+        price: 100,
+      }),
+    /already booked/
+  );
+});
+
+test('TC-SIM-003b: rejeita reserva com sobreposicao parcial no fim', () => {
+  const service = createBookingService();
+
+  service.createBooking({
+    roomId: 'room-a',
+    userId: 'user-1',
+    start: '2026-09-01T10:00:00Z',
+    end: '2026-09-01T12:00:00Z',
+    price: 100,
+  });
+
+  assert.throws(
+    () =>
+      service.createBooking({
+        roomId: 'room-a',
+        userId: 'user-2',
+        start: '2026-09-01T11:00:00Z',
+        end: '2026-09-01T13:00:00Z',
+        price: 100,
+      }),
+    /already booked/
+  );
+});
+
+test('TC-SIM-003c: rejeita intervalo contido na reserva existente', () => {
+  const service = createBookingService();
+
+  service.createBooking({
+    roomId: 'room-a',
+    userId: 'user-1',
+    start: '2026-09-01T10:00:00Z',
+    end: '2026-09-01T14:00:00Z',
+    price: 100,
+  });
+
+  assert.throws(
+    () =>
+      service.createBooking({
+        roomId: 'room-a',
+        userId: 'user-2',
+        start: '2026-09-01T11:00:00Z',
+        end: '2026-09-01T12:00:00Z',
+        price: 100,
+      }),
+    /already booked/
+  );
+});
+
+test('TC-SIM-003d: rejeita intervalo que contem a reserva existente', () => {
+  const service = createBookingService();
+
+  service.createBooking({
+    roomId: 'room-a',
+    userId: 'user-1',
+    start: '2026-09-01T11:00:00Z',
+    end: '2026-09-01T12:00:00Z',
+    price: 100,
+  });
+
+  assert.throws(
+    () =>
+      service.createBooking({
+        roomId: 'room-a',
+        userId: 'user-2',
+        start: '2026-09-01T10:00:00Z',
+        end: '2026-09-01T14:00:00Z',
+        price: 100,
+      }),
+    /already booked/
+  );
+});
+
+test('TC-SIM-003e: aceita reserva adjacente [12:00,13:00) apos [10:00,12:00)', () => {
+  const service = createBookingService();
+
+  service.createBooking({
+    roomId: 'room-a',
+    userId: 'user-1',
+    start: '2026-09-01T10:00:00Z',
+    end: '2026-09-01T12:00:00Z',
+    price: 100,
+  });
+
+  const adjacent = service.createBooking({
+    roomId: 'room-a',
+    userId: 'user-2',
+    start: '2026-09-01T12:00:00Z',
+    end: '2026-09-01T13:00:00Z',
+    price: 100,
+  });
+
+  assert.equal(adjacent.status, 'active');
+});
+
+test('TC-SIM-003f: aceita a mesma janela de horario em sala diferente', () => {
+  const service = createBookingService();
+
+  service.createBooking({
+    roomId: 'room-a',
+    userId: 'user-1',
+    start: '2026-09-01T10:00:00Z',
+    end: '2026-09-01T12:00:00Z',
+    price: 100,
+  });
+
+  const otherRoom = service.createBooking({
+    roomId: 'room-b',
+    userId: 'user-2',
+    start: '2026-09-01T10:00:00Z',
+    end: '2026-09-01T12:00:00Z',
+    price: 100,
+  });
+
+  assert.equal(otherRoom.status, 'active');
+});
+
+test('TC-SIM-003g: aceita reutilizar a janela de uma reserva ja cancelada', () => {
+  const service = createBookingService();
+
+  const original = service.createBooking({
+    roomId: 'room-a',
+    userId: 'user-1',
+    start: '2026-09-10T10:00:00Z',
+    end: '2026-09-10T12:00:00Z',
+    price: 100,
+  });
+
+  service.cancelBooking({
+    bookingId: original.id,
+    userId: 'user-1',
+    userRole: 'user',
+    now: '2026-09-01T00:00:00Z',
+  });
+
+  const reused = service.createBooking({
+    roomId: 'room-a',
+    userId: 'user-2',
+    start: '2026-09-10T10:00:00Z',
+    end: '2026-09-10T12:00:00Z',
+    price: 100,
+  });
+
+  assert.equal(reused.status, 'active');
+});
+
 test('TC-SIM-002c: nao permite cancelar reserva ja cancelada', () => {
   const service = createBookingService();
 

@@ -23,9 +23,16 @@ SECURITY_REQUIREMENTS: BR-SIM-001 (autorização de cancelamento: solicitante ou
 THREAT_MODEL: N/A formal; superfície limitada a chamadas programáticas em memória.
 AUTHORIZATION_MATRIX: Cancelamento — solicitante da reserva: permitido; `admin`: permitido; demais usuários: negado (BR-SIM-001).
 TEST_STRATEGY: Testes unitários com runner nativo `node:test`, um arquivo por módulo, suíte em `product/SIM-001/tests/`. Comando: `node --test "product/SIM-001/tests/**/*.test.js"`.
-TEST_RESULTS: Execução em 2026-08-13 (Node.js v24.18.0):
-  tests 6 / suites 0 / pass 6 / fail 0 / cancelled 0 / skipped 0 / todo 0
-  Testes: TC-SIM-001, TC-SIM-001b, TC-SIM-004, TC-SIM-002, TC-SIM-002b, TC-SIM-002c — todos PASS.
+TEST_RESULTS: Execução em 2026-08-13 (Node.js v24.18.0), pós-remediação de
+FIND-SIM-001-003 (SanaCore, branch `sana/SIM-001/FIND-003`):
+  tests 13 / suites 0 / pass 13 / fail 0 / cancelled 0 / skipped 0 / todo 0
+  Testes: TC-SIM-001, TC-SIM-001b, TC-SIM-004, TC-SIM-002, TC-SIM-002b,
+  TC-SIM-003a, TC-SIM-003b, TC-SIM-003c, TC-SIM-003d, TC-SIM-003e,
+  TC-SIM-003f, TC-SIM-003g, TC-SIM-002c — todos PASS. TC-SIM-003 (sobreposição
+  de reservas, BR-SIM-003/AC-SIM-003) estava planejado mas ausente da suíte;
+  implementado nesta remediação cobrindo sobreposição parcial (início e fim),
+  contido, contendo, adjacência aceita, sala diferente aceita e reutilização
+  de janela após cancelamento.
 
 KNOWN_LIMITATIONS: Armazenamento volátil (dados perdidos ao reiniciar o processo); sem interface HTTP; sem concorrência multi-processo.
 KNOWN_RISKS: Nenhum risco registrado pela engenharia neste ciclo.
