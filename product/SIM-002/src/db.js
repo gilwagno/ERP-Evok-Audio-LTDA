@@ -17,6 +17,8 @@ function openDatabase(location = ':memory:') {
   const schema = fs.readFileSync(SCHEMA_PATH, 'utf8');
   database.exec(schema);
 
+  let inTransaction = false;
+
   return {
     raw: database,
 
@@ -30,6 +32,66 @@ function openDatabase(location = ':memory:') {
 
     all(sql, ...params) {
       return database.prepare(sql).all(...params);
+    },
+
+    /**
+     * Executa `fn` dentro de uma transação imediata (BEGIN IMMEDIATE ... COMMIT),
+     * com ROLLBACK em caso de erro.
+     *
+     * `fn` DEVE ser síncrona: o driver (`node:sqlite`) é síncrono e qualquer
+     * `await` dentro do bloco devolveria o controle à fila de microtarefas,
+     * reabrindo a janela TOCTOU que a transação existe para fechar.
+     * Transações aninhadas são rejeitadas explicitamente.
+     *
+     * @param {Function} fn bloco crítico síncrono.
+     * @returns {*} o valor devolvido por `fn`.
+     */
+    transaction(fn) {
+      if (typeof fn !== 'function') {
+        throw new TypeError('transaction(fn): fn deve ser uma função síncrona');
+      }
+      if (inTransaction) {
+        throw new Error('Transação aninhada não é suportada');
+      }
+
+      database.exec('BEGIN IMMEDIATE');
+      inTransaction = true;
+
+      let result;
+      try {
+        result = fn();
+      } catch (error) {
+        try {
+          database.exec('ROLLBACK');
+        } finally {
+          inTransaction = false;
+        }
+        throw error;
+      }
+
+      if (result && typeof result.then === 'function') {
+        try {
+          database.exec('ROLLBACK');
+        } finally {
+          inTransaction = false;
+        }
+        throw new TypeError('transaction(fn): fn não pode ser assíncrona');
+      }
+
+      try {
+        database.exec('COMMIT');
+      } catch (error) {
+        try {
+          database.exec('ROLLBACK');
+        } catch {
+          // COMMIT falhou e a transação já não está ativa; nada a desfazer.
+        }
+        inTransaction = false;
+        throw error;
+      }
+
+      inTransaction = false;
+      return result;
     },
 
     close() {

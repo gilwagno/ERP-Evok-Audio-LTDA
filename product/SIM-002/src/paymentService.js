@@ -6,7 +6,21 @@ const PAYER_ROLES = ['analyst', 'manager'];
  * Serviço de pagamentos a fornecedores.
  */
 function createPaymentService({ db, gateway }) {
-  async function loadApprovedSupplier(supplierId, user) {
+  if (!db || typeof db.transaction !== 'function') {
+    throw new TypeError('createPaymentService: handle de banco sem primitiva transaction()');
+  }
+
+  /**
+   * Chave de idempotência estável derivada do pagamento (BR-PAY-002).
+   * Depende apenas da identidade do pagamento, de modo que qualquer
+   * retentativa — inclusive após cancelamento/reabertura — resolva para a
+   * mesma movimentação no gateway.
+   */
+  function idempotencyKeyFor(payment) {
+    return `SIM2-PAY-${payment.id}`;
+  }
+
+  function loadApprovedSupplier(supplierId, user) {
     const supplier = db.get(
       'SELECT * FROM suppliers WHERE id = ? AND company_id = ?',
       supplierId,
@@ -23,7 +37,7 @@ function createPaymentService({ db, gateway }) {
     return supplier;
   }
 
-  async function sumCommittedAmount(supplierId) {
+  function sumCommittedAmount(supplierId) {
     const row = db.get(
       `SELECT COALESCE(SUM(amount), 0) AS total
          FROM payments
@@ -45,29 +59,40 @@ function createPaymentService({ db, gateway }) {
       throw new Error('Valor do pagamento deve ser positivo');
     }
 
-    const supplier = await loadApprovedSupplier(supplierId, user);
-    const committed = await sumCommittedAmount(supplierId);
-
-    if (committed + amount > supplier.credit_limit) {
-      throw new Error('Pagamento excede o limite de crédito do fornecedor');
-    }
-
     const now = new Date().toISOString();
-    const result = db.run(
-      `INSERT INTO payments (supplier_id, company_id, amount, status, created_by, created_at)
-       VALUES (?, ?, ?, 'created', ?, ?)`,
-      supplierId,
-      supplier.company_id,
-      amount,
-      String(user.id),
-      now
-    );
 
-    return db.get('SELECT * FROM payments WHERE id = ?', Number(result.lastInsertRowid));
+    // BR-PAY-001: ler-somar → validar → inserir precisa ser atômico. O bloco
+    // abaixo é integralmente síncrono e roda sob BEGIN IMMEDIATE, fechando a
+    // janela TOCTOU entre a leitura do comprometido e a gravação.
+    const paymentId = db.transaction(() => {
+      const supplier = loadApprovedSupplier(supplierId, user);
+      const committed = sumCommittedAmount(supplierId);
+
+      if (committed + amount > supplier.credit_limit) {
+        throw new Error('Pagamento excede o limite de crédito do fornecedor');
+      }
+
+      const result = db.run(
+        `INSERT INTO payments (supplier_id, company_id, amount, status, created_by, created_at)
+         VALUES (?, ?, ?, 'created', ?, ?)`,
+        supplierId,
+        supplier.company_id,
+        amount,
+        String(user.id),
+        now
+      );
+
+      return Number(result.lastInsertRowid);
+    });
+
+    return db.get('SELECT * FROM payments WHERE id = ?', paymentId);
   }
 
   /**
    * Envia um pagamento registrado ao gateway externo.
+   *
+   * Idempotente por BR-PAY-002: um pagamento já enviado reaproveita o envio
+   * anterior (mesma `external_ref`, mesmo `sent_at`) sem nova movimentação.
    */
   async function sendPayment({ paymentId }) {
     const payment = db.get('SELECT * FROM payments WHERE id = ?', paymentId);
@@ -79,27 +104,57 @@ function createPaymentService({ db, gateway }) {
       throw new Error('Pagamento cancelado não pode ser enviado');
     }
 
+    // BR-PAY-002 — curto-circuito ANTES de tocar o gateway: envio já realizado
+    // devolve a referência externa e o instante já gravados.
+    if (payment.status === 'sent' && payment.external_ref) {
+      return payment;
+    }
+
     const now = new Date().toISOString();
     const response = await gateway.submitPayment({
       paymentId: payment.id,
-      amount: payment.amount
+      amount: payment.amount,
+      idempotencyKey: idempotencyKeyFor(payment)
     });
 
-    db.run(
-      `INSERT INTO payment_attempts (payment_id, external_ref, result, attempted_at)
-       VALUES (?, ?, ?, ?)`,
-      payment.id,
-      response.externalRef,
-      response.accepted ? 'accepted' : 'failed',
-      now
-    );
+    const accepted = response.accepted ? 'accepted' : 'failed';
 
-    db.run(
-      `UPDATE payments SET status = 'sent', external_ref = ?, sent_at = ? WHERE id = ?`,
-      response.externalRef,
-      now,
-      payment.id
-    );
+    // INSERT da tentativa + UPDATE do pagamento são uma única unidade atômica.
+    db.transaction(() => {
+      const alreadyAccepted = accepted === 'accepted'
+        ? db.get(
+          `SELECT id FROM payment_attempts
+            WHERE payment_id = ? AND result = 'accepted'`,
+          payment.id
+        )
+        : undefined;
+
+      // Uma tentativa aceita por pagamento (índice único parcial em
+      // payment_attempts); tentativas repetidas não duplicam a trilha.
+      if (!alreadyAccepted) {
+        db.run(
+          `INSERT INTO payment_attempts (payment_id, external_ref, result, attempted_at)
+           VALUES (?, ?, ?, ?)`,
+          payment.id,
+          response.externalRef,
+          accepted,
+          now
+        );
+      }
+
+      // COALESCE preserva a referência e o instante do primeiro envio:
+      // `external_ref` não nula nunca é sobrescrita.
+      db.run(
+        `UPDATE payments
+            SET status = 'sent',
+                external_ref = COALESCE(external_ref, ?),
+                sent_at = COALESCE(sent_at, ?)
+          WHERE id = ?`,
+        response.externalRef,
+        now,
+        payment.id
+      );
+    });
 
     return db.get('SELECT * FROM payments WHERE id = ?', payment.id);
   }

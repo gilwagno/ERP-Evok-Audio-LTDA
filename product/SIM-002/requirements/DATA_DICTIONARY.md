@@ -58,3 +58,11 @@ Trilha das chamadas efetuadas ao gateway de pagamento.
 | `external_ref` | TEXT | NULL | Referência externa retornada na tentativa. |
 | `result` | TEXT | NOT NULL | Resultado da chamada: `accepted` ou `failed`. |
 | `attempted_at` | TEXT | NOT NULL | Data/hora da chamada (ISO 8601). |
+
+**Índices e constraints**
+
+- `idx_payment_attempts_payment` (`payment_id`) — não único.
+- `uq_payment_attempts_accepted` — índice **único parcial** sobre `payment_id`
+  com `WHERE result = 'accepted'`: no máximo uma tentativa aceita por pagamento
+  (BR-PAY-002, defesa em profundidade). Tentativas `failed` permanecem sem
+  restrição para preservar a trilha de retentativas.

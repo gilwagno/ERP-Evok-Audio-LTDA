@@ -21,6 +21,19 @@ const payments = createPaymentService({ db, gateway });
 O objeto `user` / `approver` esperado pelas operações tem o formato
 `{ id, role, companyId }`, com `role` em `analyst` ou `manager`.
 
+### Handle de banco (`openDatabase`)
+
+Além de `raw`, `run`, `get`, `all` e `close`, o handle expõe:
+
+- **`transaction(fn)`** — executa `fn` sob `BEGIN IMMEDIATE ... COMMIT`, com
+  `ROLLBACK` automático em caso de erro, e devolve o valor de `fn`. `fn` **deve
+  ser síncrona** (o driver `node:sqlite` é síncrono; um `await` interno devolveria
+  o controle à fila de microtarefas e reabriria a janela TOCTOU). Funções
+  assíncronas e transações aninhadas são rejeitadas com `TypeError`/`Error`.
+
+`createSupplierService` e `createPaymentService` exigem um handle com
+`transaction()`.
+
 ---
 
 ## `suppliers.createSupplier({ cnpj, name, companyId })`
@@ -31,7 +44,12 @@ Cadastra um fornecedor.
 - **Entrada:** `cnpj` (14 dígitos), `name` (texto), `companyId` (inteiro).
 - **Saída:** registro do fornecedor com `status: "pending"` e `credit_limit: 0`.
 - **Erros:** `CNPJ inválido`, `Nome do fornecedor é obrigatório`,
-  `Empresa não encontrada`.
+  `Empresa não encontrada`,
+  `CNPJ já cadastrado para outro fornecedor` (BR-SUP-002 — unicidade **global**,
+  aplicada mesmo quando o CNPJ já existe em outra empresa).
+- **Garantias:** a verificação de duplicidade e o `INSERT` ocorrem na mesma
+  transação; a unicidade é imposta pela constraint `UNIQUE` de `suppliers.cnpj`
+  e a violação é convertida em erro de negócio (nunca vaza `SQLITE_CONSTRAINT`).
 - **Referências:** REQ-SIM2-001, BR-SUP-002.
 
 ## `suppliers.getSupplier({ supplierId, user })`
@@ -69,6 +87,10 @@ Registra um pagamento para um fornecedor aprovado.
   `Valor do pagamento deve ser positivo`, `Fornecedor não encontrado`,
   `Fornecedor não está aprovado para receber pagamentos`,
   `Pagamento excede o limite de crédito do fornecedor`.
+- **Garantias:** a soma do valor comprometido, a validação do teto (BR-PAY-001) e
+  o `INSERT` executam num único bloco `BEGIN IMMEDIATE ... COMMIT`. Chamadas
+  concorrentes sobre o mesmo fornecedor são serializadas: o excedente é recusado,
+  nunca persistido.
 - **Referências:** REQ-SIM2-003, BR-SUP-001, BR-PAY-001, BR-SEC-001.
 
 ## `payments.sendPayment({ paymentId })` *(async)*
@@ -83,6 +105,16 @@ Envia o pagamento ao gateway externo.
   `payment_attempts`.
 - **Erros:** `Pagamento não encontrado`, `Pagamento cancelado não pode ser
   enviado`.
+- **Idempotência (BR-PAY-002):** a operação é idempotente por pagamento.
+  - Pagamento já em `sent` com `external_ref` preenchida: a chamada retorna o
+    registro existente **sem** acionar o gateway.
+  - Nos demais casos, o gateway recebe a chave de idempotência estável
+    `SIM2-PAY-<paymentId>` e deduplica por ela: a mesma chave devolve sempre a
+    mesma `externalRef`, sem nova movimentação financeira.
+  - `external_ref` e `sent_at` já gravados nunca são sobrescritos (`COALESCE`).
+  - `payment_attempts` registra no máximo **uma** tentativa `accepted` por
+    pagamento (índice único parcial).
+  - `INSERT` da tentativa e `UPDATE` do pagamento ocorrem na mesma transação.
 - **Referências:** REQ-SIM2-004, BR-PAY-002.
 
 ## `payments.listPaymentsBySupplier({ supplierId, user })`
