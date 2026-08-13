@@ -49,7 +49,8 @@ Consulta um fornecedor da empresa do usuário.
 
 Aprova um fornecedor e concede limite de crédito.
 
-- **Papel exigido:** `analyst` (dentro da sua alçada) ou `manager`.
+- **Papel exigido:** `analyst` para `creditLimit` até R$ 10.000,00 **inclusive**;
+  acima desse valor, exclusivamente `manager` (BR-APR-001).
 - **Entrada:** `supplierId`, `creditLimit` (número positivo), `approver`.
 - **Saída:** fornecedor com `status: "approved"`, `credit_limit`, `approved_by`
   e `approved_at`.
@@ -64,7 +65,9 @@ Registra um pagamento para um fornecedor aprovado.
 
 - **Papel exigido:** `manager`.
 - **Entrada:** `supplierId`, `amount` (número positivo), `user`.
-- **Saída:** pagamento com `status: "pending"`, `external_ref: null`.
+- **Saída:** pagamento com `status: "created"`, `external_ref: null`. Os status
+  válidos de pagamento são `created`, `sent` e `cancelled` (`pending` é status de
+  **fornecedor**, não de pagamento).
 - **Erros:** `Usuário não possui permissão para registrar pagamentos`,
   `Valor do pagamento deve ser positivo`, `Fornecedor não encontrado`,
   `Fornecedor não está aprovado para receber pagamentos`,

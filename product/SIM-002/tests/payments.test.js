@@ -18,6 +18,24 @@ function approvedSupplier(ctx, { cnpj = '44555666000133', creditLimit = 20000 } 
   });
 }
 
+/** Pós-condição lida diretamente do banco: quantidade de pagamentos do fornecedor. */
+function countPayments(ctx, supplierId) {
+  return ctx.db.get(
+    'SELECT COUNT(*) AS total FROM payments WHERE supplier_id = ?',
+    supplierId
+  ).total;
+}
+
+/** Pós-condição lida diretamente do banco: soma dos pagamentos não cancelados. */
+function sumPayments(ctx, supplierId) {
+  return ctx.db.get(
+    `SELECT COALESCE(SUM(amount), 0) AS total
+       FROM payments
+      WHERE supplier_id = ? AND status <> 'cancelled'`,
+    supplierId
+  ).total;
+}
+
 test('TC-SIM2-003: pagamento para fornecedor aprovado e registrado', async () => {
   const ctx = buildContext();
   try {
@@ -40,20 +58,105 @@ test('TC-SIM2-003: pagamento para fornecedor aprovado e registrado', async () =>
   }
 });
 
-test('TC-SIM2-003b: pagamento acima do limite de credito e rejeitado', async () => {
+// BR-PAY-001: a soma dos pagamentos válidos nunca pode exceder o limite de crédito.
+// Os testes abaixo substituem o antipadrão try/catch sem asserção (FIND-SIM-002-007)
+// e devem FALHAR se a guarda de `src/paymentService.js` for neutralizada.
+
+test('TC-SIM2-003b: pagamento acima do limite de credito e rejeitado e nada e persistido', async () => {
   const ctx = buildContext();
   try {
     const supplier = approvedSupplier(ctx, { creditLimit: 5000 });
+    assert.strictEqual(countPayments(ctx, supplier.id), 0);
 
-    try {
-      await ctx.payments.createPayment({
+    await assert.rejects(
+      () => ctx.payments.createPayment({
         supplierId: supplier.id,
         amount: 9000,
         user: user({ id: 'ana', role: 'analyst', companyId: ctx.companies.acme })
-      });
-    } catch (error) {
-      // limite de crédito excedido
-    }
+      }),
+      /excede o limite/
+    );
+
+    // Pós-condição: nenhuma linha em `payments` para o fornecedor.
+    assert.strictEqual(countPayments(ctx, supplier.id), 0);
+    assert.strictEqual(sumPayments(ctx, supplier.id), 0);
+  } finally {
+    ctx.close();
+  }
+});
+
+test('TC-SIM2-003d: o teto considera a soma acumulada, nao o valor isolado', async () => {
+  const ctx = buildContext();
+  try {
+    const supplier = approvedSupplier(ctx, { creditLimit: 5000 });
+    const payer = user({ id: 'ana', role: 'analyst', companyId: ctx.companies.acme });
+
+    const first = await ctx.payments.createPayment({
+      supplierId: supplier.id,
+      amount: 3000,
+      user: payer
+    });
+    assert.strictEqual(first.amount, 3000);
+    assert.strictEqual(countPayments(ctx, supplier.id), 1);
+
+    // 3000 + 2500 = 5500 > 5000, ainda que 2500 isoladamente caiba no limite.
+    await assert.rejects(
+      () => ctx.payments.createPayment({ supplierId: supplier.id, amount: 2500, user: payer }),
+      /excede o limite/
+    );
+
+    assert.strictEqual(countPayments(ctx, supplier.id), 1);
+    assert.strictEqual(sumPayments(ctx, supplier.id), 3000);
+  } finally {
+    ctx.close();
+  }
+});
+
+test('TC-SIM2-003e: caso acumulado do RETEST_SPEC — limite 10000, 6000 aceito e 5000 recusado', async () => {
+  const ctx = buildContext();
+  try {
+    const supplier = approvedSupplier(ctx, { creditLimit: 10000 });
+    const payer = user({ id: 'ana', role: 'analyst', companyId: ctx.companies.acme });
+
+    await ctx.payments.createPayment({ supplierId: supplier.id, amount: 6000, user: payer });
+
+    await assert.rejects(
+      () => ctx.payments.createPayment({ supplierId: supplier.id, amount: 5000, user: payer }),
+      /excede o limite/
+    );
+
+    assert.strictEqual(countPayments(ctx, supplier.id), 1);
+    assert.strictEqual(sumPayments(ctx, supplier.id), 6000);
+  } finally {
+    ctx.close();
+  }
+});
+
+test('TC-SIM2-003f: soma exatamente igual ao limite e aceita; limite + 0,01 e recusado', async () => {
+  const ctx = buildContext();
+  try {
+    const supplier = approvedSupplier(ctx, { creditLimit: 5000 });
+    const payer = user({ id: 'ana', role: 'analyst', companyId: ctx.companies.acme });
+
+    await ctx.payments.createPayment({ supplierId: supplier.id, amount: 4000, user: payer });
+
+    // Fronteira exata: 4000 + 1000 == 5000 → aceito.
+    const exact = await ctx.payments.createPayment({
+      supplierId: supplier.id,
+      amount: 1000,
+      user: payer
+    });
+    assert.strictEqual(exact.status, 'created');
+    assert.strictEqual(countPayments(ctx, supplier.id), 2);
+    assert.strictEqual(sumPayments(ctx, supplier.id), 5000);
+
+    // Um centavo acima do teto → recusado, sem persistência.
+    await assert.rejects(
+      () => ctx.payments.createPayment({ supplierId: supplier.id, amount: 0.01, user: payer }),
+      /excede o limite/
+    );
+    assert.strictEqual(countPayments(ctx, supplier.id), 2);
+    assert.strictEqual(sumPayments(ctx, supplier.id), 5000);
   } finally {
     ctx.close();
   }
