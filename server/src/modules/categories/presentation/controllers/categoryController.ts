@@ -6,6 +6,7 @@ const GetCategoryByIdUseCase = require('../../application/use-cases/GetCategoryB
 const CreateCategoryUseCase = require('../../application/use-cases/CreateCategoryUseCase');
 const UpdateCategoryUseCase = require('../../application/use-cases/UpdateCategoryUseCase');
 const DeactivateCategoryUseCase = require('../../application/use-cases/DeactivateCategoryUseCase');
+const { logAction } = require('../../../../services/auditLogService');
 
 /**
  * Controller enxuto do módulo `categories`. Delega toda a regra de negócio
@@ -63,8 +64,20 @@ exports.update = async (req: Request, res: Response, next: NextFunction) => {
 /** `DELETE /api/categories/:id` — inativa (soft delete) uma categoria. */
 exports.remove = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const before = await categoriesRepository.findById(req.params.id);
     const useCase = new DeactivateCategoryUseCase(categoriesRepository);
     const result = await useCase.execute({ id: req.params.id });
+
+    logAction(req, {
+      action: 'soft_delete',
+      entityType: 'Category',
+      entityId: before.id,
+      entityDescription: before.name,
+      oldValues: { active: before.active },
+      newValues: { active: false },
+      description: `Categoria ${before.name} inativada`,
+    });
+
     res.json({ success: true, data: result });
   } catch (error) {
     next(error);

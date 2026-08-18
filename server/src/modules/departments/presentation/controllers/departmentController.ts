@@ -6,6 +6,7 @@ const GetDepartmentByIdUseCase = require('../../application/use-cases/GetDepartm
 const CreateDepartmentUseCase = require('../../application/use-cases/CreateDepartmentUseCase');
 const UpdateDepartmentUseCase = require('../../application/use-cases/UpdateDepartmentUseCase');
 const DeactivateDepartmentUseCase = require('../../application/use-cases/DeactivateDepartmentUseCase');
+const { logAction } = require('../../../../services/auditLogService');
 
 /**
  * Controller enxuto do módulo `departments`. Delega toda a regra de negócio
@@ -62,8 +63,20 @@ exports.update = async (req: Request, res: Response, next: NextFunction) => {
 /** `DELETE /api/departments/:id` — inativa (soft delete) um departamento. */
 exports.remove = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const before = await departmentsRepository.findById(req.params.id);
     const useCase = new DeactivateDepartmentUseCase(departmentsRepository);
     const result = await useCase.execute({ id: req.params.id });
+
+    logAction(req, {
+      action: 'soft_delete',
+      entityType: 'Department',
+      entityId: before.id,
+      entityDescription: `${before.sigla} — ${before.name}`,
+      oldValues: { active: before.active },
+      newValues: { active: false },
+      description: `Departamento ${before.name} inativado`,
+    });
+
     res.json({ success: true, data: result });
   } catch (error) {
     next(error);

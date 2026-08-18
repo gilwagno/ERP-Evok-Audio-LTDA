@@ -24,6 +24,7 @@ const {
 } = require('../validators/itemValidators');
 const { ValidationError } = require('../../../../errors');
 const Validators = require('../../../../utils/validators');
+const { logAction } = require('../../../../services/auditLogService');
 
 const itemRepository = new SequelizeItemRepository();
 const itemEstruturaRepository = new SequelizeItemEstruturaRepository();
@@ -202,8 +203,20 @@ exports.updateSupplier = async (req: Request, res: Response, next: NextFunction)
  */
 exports.removeSupplier = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const before = await itemSupplierRepository.findById(Number(req.params.linkId));
     const useCase = new DeactivateItemSupplierUseCase(itemSupplierRepository);
     const data = await useCase.execute({ itemId: req.params.id, linkId: Number(req.params.linkId) });
+
+    logAction(req, {
+      action: 'soft_delete',
+      entityType: 'ItemSupplier',
+      entityId: before.id,
+      entityDescription: `item ${before.item_id} x fornecedor ${before.supplier_id}`,
+      oldValues: { active: before.active, preferred: before.preferred },
+      newValues: { active: false, preferred: false },
+      description: `Vínculo item-fornecedor #${before.id} desativado`,
+    });
+
     res.json({ success: true, data });
   } catch (error: any) {
     next(error);

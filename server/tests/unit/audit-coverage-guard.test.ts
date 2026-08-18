@@ -49,17 +49,20 @@ const MODULES_DIR = path.resolve(__dirname, '../../src/modules');
 const DEBITO_CONHECIDO = new Set([
   'accessProfiles',
   'assets',
-  'categories',
   'clients',
-  'departments',
   'employees',
-  'items',
   'mobileInventory',
   'nonConformities',
   'serviceOrders',
   'suppliers',
   'users',
   'webhooks',
+  // 'categories' saiu em 2026-08-18 (SanaCore `ERP-LEGACY-001-CASE-014`,
+  // item F de `AUD-ALOG-01`): handlers de escrita passaram a chamar `logAction`.
+  // 'departments' saiu em 2026-08-18 (SanaCore `ERP-LEGACY-001-CASE-014`,
+  // item G de `AUD-ALOG-01`): handlers de escrita passaram a chamar `logAction`.
+  // 'items' saiu em 2026-08-18 (SanaCore `ERP-LEGACY-001-CASE-014`,
+  // item C de `AUD-ALOG-01`): `removeSupplier` passou a chamar `logAction`.
 ]);
 
 /** Lê recursivamente os arquivos `.ts` de um diretório (se existir). */
