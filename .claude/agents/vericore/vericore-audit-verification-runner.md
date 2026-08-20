@@ -31,7 +31,11 @@ read-only) no ambiente de auditoria.
 **NÃO PODE:**
 - Editar qualquer arquivo (sem Write/Edit) — Regra 2 do CLAUDE.md.
 - Executar comandos que mutem estado: migrations, seeds destrutivos, DELETE/
-  UPDATE em banco, deploy, force push, instalação que altere lockfile.
+  UPDATE em banco (inclusive banco de teste), deploy, force push, instalação
+  que altere lockfile. Quando a prova exigir mutação real contra banco de
+  teste (`_test`/`_ci`) — ex.: criar fixture, exercitar rota que grava, e ler
+  o resultado —, isso é escopo do `vericore-integration-retest-runner`, não
+  deste agente; encaminhe o pedido a ele em vez de executar.
 - Emitir findings ou vereditos próprios — ele produz evidência; a
   classificação é do auditor solicitante.
 

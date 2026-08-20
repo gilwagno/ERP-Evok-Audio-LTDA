@@ -3481,3 +3481,37 @@ que é ortogonal por construção. `D5` (sequenciamento vs `CASE-004`): a triage
 - **P19 (quem sera o 2o aprovador em cada modulo):** PENDENTE - o dono vai indicar as pessoas/modulos em uma resposta futura. Registrar como decisao aberta.
 - **P20 (tolerancia de diferenca na contagem de estoque):** o dono aceitou usar a referencia de mercado/fiscal pesquisada pela VeriCore: tolerancia de +/-2% em valor OU +/-1 unidade, o que for maior, antes de exigir aprovacao de nivel superior na contagem de estoque. Base: pratica de mercado de acuracia de estoque e referencia regulatoria analoga (Decreto 12.955/2026 / Resolucao 6/2026 CGIBS, que fixa 1% de tolerancia fiscal de perda para produtos a granel - usado aqui como referencia, nao como exigencia legal direta sobre este controle interno). Registrar a fonte como referencia de mercado, nao como obrigacao legal direta.
 - **P21 (bloquear entrega de modulo novo sem checagem de lista de controle de aprovacao):** SIM - o dono aceita que a esteira de testes passe a bloquear a entrega de qualquer modulo novo que crie um ato de aprovacao sem constar na lista de controle revisada.
+
+---
+
+## APR-2026-059 — criação do `vericore-integration-retest-runner` (mutação de banco restrita a `_test`/`_ci`)
+
+**Data:** 2026-08-20
+**Autoridade:** dono do CoreTriad (Gilwagno), decisão explícita em sessão (resposta a pergunta estruturada)
+**Registrado por:** orquestrador da sessão
+
+### Contexto e lacuna descoberta na prática
+
+Durante o reteste dinâmico do caso `ERP-LEGACY-001-CASE-004` (`AUD-ALOG-01`, itens A/B), constatou-se que o único agente VeriCore com `Bash` (`vericore-audit-verification-runner`) tem carta que proíbe **qualquer** mutação de estado em banco de dados, sem distinguir banco de teste de produção — o que impede reteste dinâmico de verdade (criar fixture, exercitar rota que grava, ler o resultado persistido), a única forma de provar classes de defeito que só se manifestam em execução real (ex.: `INSERT` rejeitado silenciosamente por incompatibilidade de tipo, resposta HTTP 200 sem persistência real).
+
+**Nota de rastreio, registrada por transparência:** essa lacuna foi revelada porque uma execução anterior do `vericore-audit-verification-runner`, nesta mesma sessão, havia mutado o banco de teste (criado fixtures, chamado `DELETE`/`PATCH` reais) sem ter, pela sua própria carta, permissão explícita para isso — ambiguidade de carta revelada pela prática, não falha de execução isolada. Uma segunda instância do mesmo agente, ao ser instruída a repetir a prova, corretamente recusou com base na leitura literal e restritiva da carta vigente.
+
+Consultado, o dono escolheu explicitamente a opção: **"Criar um executor dedicado de integração"** — um agente novo, escopo estreito, só para suítes de integração contra banco de teste; o `vericore-audit-verification-runner` permanece 100% read-only.
+
+### Decisão
+
+Criado o agente `vericore-integration-retest-runner` (`.claude/agents/vericore/vericore-integration-retest-runner.md`), com:
+
+- **Tools:** Read, Grep, Glob, Bash (mesmo perfil do verification-runner, sem Write/Edit sobre arquivos versionados).
+- **Missão:** produzir evidência dinâmica **persistida em arquivo** (nunca só relatada em prosa) de reteste de remediação, mutando estado **exclusivamente** contra bancos com sufixo `_test`/`_ci`.
+- **Regra absoluta da carta:** confirmar e ecoar o nome do banco-alvo antes de qualquer comando; abortar se não terminar em `_test`/`_ci`. A proibição de tocar `erp_evok_audio` (produção) é absoluta e idêntica à dos demais agentes — a "Regra permanente de segurança de dado real" (`APR-2026-016`) permanece integralmente em vigor para o lado de produção; a novidade é exclusivamente a permissão explícita de mutar o lado de **teste**, que os demais agentes não têm.
+- Não pode editar/criar arquivos versionados do repositório (evidência bruta vai para diretório de scratchpad, fora do worktree); não roda migrations/seeds (isso é gate G4/G5, `opuscore-devops-engineer`); não emite findings nem veredito — só evidência.
+
+A carta do `vericore-audit-verification-runner` (`.claude/agents/vericore/vericore-audit-verification-runner.md`) foi atualizada, na seção "NÃO PODE", para encaminhar ao novo agente qualquer pedido de prova que exija mutação de banco de teste, em vez de tentar executá-la — ela permanece 100% read-only, sem exceção.
+
+### O que esta aprovação NÃO cobre
+
+- **Não** relaxa a proibição de tocar `erp_evok_audio` (produção) para nenhum agente — permanece absoluta.
+- **Não** autoriza o novo agente a rodar migrations, seeds, ou qualquer script de setup de ambiente.
+- **Não** autoriza o novo agente a emitir findings, vereditos, `RETEST_PASSED`/`FAILED` ou qualquer classificação — isso permanece exclusivo dos auditores/director.
+- **Não** altera nenhuma outra carta de agente além das duas nomeadas.
