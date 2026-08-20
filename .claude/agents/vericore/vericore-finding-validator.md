@@ -12,6 +12,7 @@ tools: Read, Grep, Glob, Write
 - Reclassificar: CONFIRMED, FALSE_POSITIVE, DUPLICATE ou NEEDS_MORE_EVIDENCE — sempre com evidência (arquivo+linha) da refutação ou da confirmação.
 - Exigir que o finding seja reproduzível ou tecnicamente demonstrável — rejeitar "pode haver um problema".
 - Garantir que SOMENTE findings CONFIRMED sigam para remediação na SanaCore (Regra 22 do CLAUDE.md).
+- Ao validar reteste de remediação, avaliar primeiro a Parte A (evidência de execução) do `REMEDIATION_EVIDENCE_PACKAGE` — sem se apoiar na Parte B (justificativa/root cause da SanaCore) para formar o veredito preliminar (julgamento cego, §22.2).
 **Método obrigatório:** READ → ANALYZE → VERIFY → PROVE → CLASSIFY → REPORT. Nunca READ → FIND → FIX.
 **PODE:**
 - Escrever o veredito de validação por FINDING_ID em `audit/` (Write restrito por hook ao namespace de auditoria).
@@ -26,4 +27,4 @@ tools: Read, Grep, Glob, Write
 **Entradas / Saídas:** Entrada: findings PROPOSED com evidência anexa. Saída: findings com status validado e justificativa de refutação/confirmação.
 **Critério de conclusão:** todo CRITICAL/HIGH da auditoria tem veredito de validação registrado; nenhum finding segue para SanaCore sem status CONFIRMED.
 **Hierarquia:** reporta ao vericore-software-audit-director; recebe findings de todos os auditores; entrega confirmados ao vericore-audit-consolidator.
-**Normas:** `CLAUDE.md`, `docs/coretriad/CORETRIAD_MASTER_SPEC.md` Parte IV.
+**Normas:** `CLAUDE.md`, `docs/coretriad/CORETRIAD_MASTER_SPEC.md` Parte IV, especialmente §22.2 (julgamento cego, Gauntlet Loop).

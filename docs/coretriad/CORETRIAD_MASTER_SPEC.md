@@ -356,6 +356,74 @@ demonstrável — nunca "pode haver um problema".
 policy...). Somente findings CONFIRMED seguem para SanaCore. CRITICAL e
 HIGH passam obrigatoriamente pelo validator.
 
+## 22.1 Gauntlet Loop — decomposição granular (teto de 6 agentes)
+
+VeriCore não emite um veredito único por `SOFTWARE_RELEASE_PACKAGE`. A
+auditoria é decomposta em **subunidades verificáveis** (por módulo, por
+critério de aceitação, por caso de teste), registradas no
+`SUBUNIT_MANIFEST` do pacote de entrada, e cada subunidade recebe um
+veredito próprio antes da consolidação final.
+
+O total de subagentes ativos simultaneamente (executores da rodada +
+verificadores) **não ultrapassa 6**. `vericore-audit-planning-agent`
+prioriza subunidades de maior risco e agrupa itens correlatos ou de baixo
+risco sob o mesmo par executor/verificador em vez de multiplicar agentes —
+o teto é sobre concorrência, não sobre quantas subunidades existem no
+total (subunidades adicionais esperam turno). Isto opera junto com o teto
+de uso da §37.1 (poucos agentes ativos, mais rodadas).
+
+## 22.2 Julgamento cego
+
+O contrato de handoff separa explicitamente **Parte A — Artefato** de
+**Parte B — Justificativa** (ver `SOFTWARE_RELEASE_PACKAGE.md` e
+`REMEDIATION_EVIDENCE_PACKAGE.md`). Por subunidade, o auditor:
+
+1. Lê e avalia somente a Parte A (o que foi entregue: código, testes,
+   contratos, evidência de execução) e emite um veredito preliminar;
+2. Só então lê a Parte B (racional técnico, limitações conhecidas,
+   riscos declarados pela empresa entregadora) para contextualizar,
+   nunca para revisar o veredito preliminar sem nova evidência.
+
+Objetivo: evitar viés de ancoragem em que a justificativa do time que
+construiu (ou remediou) convence o auditor antes de ele examinar o
+artefato por conta própria.
+
+## 22.3 Verificação por execução real
+
+Nenhum finding é fechado como aprovado apenas por leitura estática de
+código ou diff. Sempre que o tipo de artefato permitir, o auditor
+**executa de fato**: automação de browser, execução em sandbox,
+chamada real de API, rodada real de suíte de teste — via
+`audit-verification-runner` (§33) quando a trilha exigir execução
+controlada. O pacote de entrada declara em `EXECUTABLE_VERIFICATION_HOOKS`
+(release) ou `EXECUTABLE_RETEST_INSTRUCTIONS` (remediação) como reproduzir
+essa execução.
+
+Se a ferramenta necessária para executar não estiver disponível, o
+auditor **reporta a limitação explicitamente** (`LIMITATION_REPORTED`) —
+nunca aprova uma subunidade sem tê-la de fato testada.
+
+## 22.4 Critério de aceitação em dois níveis
+
+Cada subunidade recebe dois vereditos independentes:
+
+- **Nível 1 — bloqueante:** `PASS` somente se não houver finding
+  CRITICAL ou HIGH confirmado na subunidade. Reprovação aqui impede
+  `AUDIT_PASSED`.
+- **Nível 2 — qualidade:** padrão que um revisor sênior consideraria
+  exemplar, com critério objetivo por tipo de artefato (performance,
+  legibilidade, cobertura de teste, aderência ao padrão do projeto).
+  Reprovação em Nível 2 não bloqueia release sozinha, mas gera finding
+  MEDIUM/LOW registrado no `Remediation Backlog` (§25).
+
+Reprovação em qualquer subunidade (Nível 1) devolve a subunidade a
+OpusCore/SanaCore para nova rodada — o `AUDIT_COMMIT` (ou
+`REMEDIATION_COMMIT`) da rodada reprovada permanece imutável como
+histórico; a nova rodada gera novo commit e novo `ROUND_NUMBER`
+(campo presente em ambos os contratos). Teto de **5 rodadas por
+subunidade**; ao atingir o teto sem `PASS`, a subunidade escala para
+revisão humana em vez de repetir indefinidamente.
+
 ## 23. Materialização de evidência
 
 Auditores especialistas operam read-only. Quem grava relatórios/evidências
@@ -535,6 +603,58 @@ Nunca decidir por votação entre modelos.
   FILES_CHANGED, DECISION, EVIDENCE, TIMESTAMP.
 - Relatório executivo resumido ao usuário — nunca despejar conversas
   internas.
+
+## 37.1 Gestão de limites de uso
+
+O CoreTriad roda sobre um plano com janela de sessão (5h) e teto semanal,
+mesmo em planos com créditos habilitados. Todas as empresas — OpusCore,
+VeriCore, SanaCore, `coretriad-director` — priorizam **poucos agentes
+ativos rodando por mais rodadas** em vez de muitos em paralelo, para
+evitar picos que estourem a janela. Isto é o motivo operacional por trás
+do teto de 6 agentes simultâneos do Gauntlet Loop (§22.1) — o mesmo
+princípio vale para qualquer fan-out de subagentes em qualquer empresa,
+não só auditoria.
+
+## 37.2 Roteamento de modelo por papel/tarefa
+
+Três níveis de modelo por complexidade:
+
+- **Leve** — pré-triagem, grep, leitura de testes existentes, lint.
+- **Intermediário** — padrão para implementação (OpusCore), remediação
+  (SanaCore) e auditoria de rotina (VeriCore).
+- **Robusto** — decisões arquiteturais, debugging multi-arquivo,
+  julgamento de alto risco (Nível 2 do §22.4 em subunidade crítica,
+  finding CRITICAL/HIGH no `finding-validator`, RISK_ACCEPTED).
+
+Cada subagente herda o **nível mínimo suficiente** para a tarefa, nunca o
+máximo por padrão. Antes de escalar de nível de modelo, aumentar primeiro
+o orçamento de extended thinking do modelo intermediário. Habilitar cache
+de prompt para conteúdo estático reaproveitado entre chamadas (templates,
+`CLAUDE.md`, trechos fixos do Master Spec).
+
+## 37.3 Engenharia de contexto por subagente
+
+Cada par executor-verificador recebe apenas o recorte da subunidade sob
+avaliação (§22.1) — nunca o `SOFTWARE_RELEASE_PACKAGE`/
+`REMEDIATION_EVIDENCE_PACKAGE` completo nem o histórico integral da
+auditoria. Em execuções longas, resumir ou descartar turnos já resolvidos
+e saídas brutas de ferramentas antes da rodada seguinte. Entre rodadas,
+usar os artefatos já persistidos (worktrees, `AUDIT_COMMIT`,
+`REMEDIATION_COMMIT`, contratos) como fonte de verdade, em vez de
+recarregar histórico de conversa a cada chamada — consistente com o
+Princípio de Contexto (§7).
+
+## 37.4 Qualidade do harness
+
+Hooks de conclusão de tarefa rodam lint/typecheck/testes básicos antes de
+uma subtarefa (OpusCore ou SanaCore) ser enviada para auditoria — evita
+gastar uma rodada inteira de verificação em algo que uma checagem
+automática barata já teria pego. Permissões calibradas por papel:
+aprovação automática mais ampla para VeriCore em operações de
+leitura/teste (VeriCore já é read-only por §33; a automação em execução
+real do §22.3 usa o `audit-verification-runner` com permissões
+controladas), mantendo o gate humano nos pontos de escrita de
+OpusCore/SanaCore já definidos em §33 e §34.
 
 ---
 

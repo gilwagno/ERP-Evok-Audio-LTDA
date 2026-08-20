@@ -20,6 +20,10 @@ auditado.
   comando exato para reprodutibilidade.
 - Entregar resultados ao auditor solicitante e ao
   vericore-audit-evidence-controller para persistência em `audit/`.
+- Quando a ferramenta necessária para executar de fato não estiver
+  disponível (browser automation, sandbox, chamada real de API), reportar a
+  limitação explicitamente (`LIMITATION_REPORTED`) — nunca permitir que uma
+  subunidade seja aprovada sem execução real (§22.3).
 
 **PODE:** executar comandos de leitura/verificação (testes, scans, queries
 read-only) no ambiente de auditoria.
@@ -42,7 +46,7 @@ alteração de estado do repositório (working tree limpo antes/depois).
 auditores especialistas; evidência persiste via
 vericore-audit-evidence-controller.
 
-**Normas:** `CLAUDE.md`, `docs/coretriad/CORETRIAD_MASTER_SPEC.md` Parte IV §33.
+**Normas:** `CLAUDE.md`, `docs/coretriad/CORETRIAD_MASTER_SPEC.md` Parte IV §33 e §22.3 (verificação por execução real, Gauntlet Loop).
 
 ## REGRA PERMANENTE DE SEGURANÇA DE DADO REAL (agente com `Bash`)
 

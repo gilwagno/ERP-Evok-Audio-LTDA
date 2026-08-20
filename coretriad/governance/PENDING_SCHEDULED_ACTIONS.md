@@ -287,7 +287,7 @@ como estava, aguardando o ato explícito de conversão pelo
 (`remediation/cases/ERP-LEGACY-001-CASE-003/RETEST_REPORT_EXTENSAO.md`,
 § "PEND-EXT-05"), confrontado com `APPROVALS.md` |
 | Critério vinculado | Rastreabilidade de autorização (Regras 7 e 18); não é `CE-*` |
-| **Estado** | **`AGUARDANDO REMEDIAÇÃO`** |
+| **Estado** | **`REMEDIADO — aguardando decisão da VeriCore sobre relevar ou retestar`** |
 
 **O achado, como levantado pela VeriCore:** o cabeçalho de
 `server/scripts/apply-pending-migrations.cjs:22-23` atribui a extensão da
@@ -328,6 +328,21 @@ de leitura do trecho corrigido citada aqui ou em despacho subsequente.
 Reteste da correção não é automaticamente exigido por este item (é mudança
 de comentário, não de lógica), mas cabe à VeriCore decidir se releva ou
 retesta.
+
+**Nota de fechamento parcial (2026-08-20):** a SanaCore, trabalhando no
+worktree `C:/Gilwagno WorkSpace/ERP-Evok-sana-CASE-003` (branch
+`sana/ERP-LEGACY-001/CASE-003`), aplicou a correção pré-autorizada por
+`APR-2026-028` §4 no commit `6168649` (avançando de `95aeff4`, já enviado a
+`origin/sana/ERP-LEGACY-001/CASE-003`): a citação no cabeçalho de
+`server/scripts/apply-pending-migrations.cjs:22-23` passou de
+`APR-2026-026` para `APR-2026-028`, sem outra ocorrência remanescente da
+citação errada no arquivo. **Esta nota registra o ato de correção relatado
+pela SanaCore; não constitui `RETEST_PASSED` nem encerramento do item** —
+só a VeriCore tem autoridade para declarar reteste e fechar rastreio de
+autorização (Regras 2, 4 e 18 do `CLAUDE.md`). Falta: decisão da VeriCore
+sobre relevar (aceitar a correção de comentário sem reteste formal, como já
+antecipado acima) ou retestar formalmente antes de considerar este item
+`RESOLVIDO`.
 
 ---
 
@@ -417,3 +432,14 @@ trabalho nesta frente sem nova decisão humana explícita.
   `004` foram atualizados preservando o texto original do problema, com
   superação/resolução marcada e datada; `PEND-2026-005` a `007` são novos.
 - Nenhum commit foi feito por este registro.
+- **Atualização de 2026-08-20 (`PEND-2026-005`):** estado alterado de
+  `AGUARDANDO REMEDIAÇÃO` para `REMEDIADO — aguardando decisão da VeriCore
+  sobre relevar ou retestar`, com nota factual citando o commit `6168649` na
+  branch `sana/ERP-LEGACY-001/CASE-003` como evidência da correção. Nenhum
+  outro item foi alterado nesta passada. Verificação: esta atualização não
+  foi confirmada por leitura direta do arquivo corrigido no worktree
+  `C:/Gilwagno WorkSpace/ERP-Evok-sana-CASE-003` (fora do escopo de
+  ferramentas desta sessão — sem `Bash`/acesso a outro worktree); baseia-se
+  no relato factual do `coretriad-director` que solicitou a atualização.
+  Falta à VeriCore decidir relevar ou retestar; este arquivo não declara
+  `RETEST_PASSED` nem fecha o item (Regras 4 e 18 do `CLAUDE.md`).

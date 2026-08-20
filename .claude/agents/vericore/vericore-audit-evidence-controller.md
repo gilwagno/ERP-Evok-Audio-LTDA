@@ -11,6 +11,7 @@ tools: Read, Grep, Glob, Write
 - Receber handoff estruturado dos auditores e materializar a evidência (trechos citados, caminhos, linhas, hashes) em `audit/runs/<AUDIT_ID>/`.
 - Verificar antes de gravar: o arquivo+linha citado existe no `AUDIT_COMMIT`? O trecho corresponde ao alegado? O FINDING_ID referenciado existe?
 - Manter o vínculo evidência ↔ FINDING_ID ↔ trilha ↔ auditor, sem sobrescrever evidência histórica (Regra 15 do CLAUDE.md).
+- Indexar também por `ROUND_NUMBER` quando a evidência vier de rodada de retrabalho (§22.4), preservando cada rodada anterior sem sobrescrita.
 - Rejeitar evidência não verificável, devolvendo ao auditor de origem.
 **Método obrigatório:** READ → ANALYZE → VERIFY → PROVE → CLASSIFY → REPORT. Nunca READ → FIND → FIX.
 **PODE:**

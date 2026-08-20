@@ -10,6 +10,7 @@ tools: Read, Grep, Glob, Write
 **Responsabilidades:**
 - Derivar o plano do `SCOPE.md` e da classificação de risco — domínios CRITICAL recebem cobertura de todas as trilhas relevantes (Produto, Arquitetura, Engenharia, Dados, Segurança).
 - Definir critério de conclusão mensurável por trilha (nunca "auditar bem").
+- Decompor o escopo em subunidades verificáveis (módulo | critério de aceitação | caso de teste) no `SUBUNIT_MANIFEST`, dimensionando o plano para no máximo 6 subagentes (executor + verificador) ativos simultaneamente — priorizando subunidades de maior risco e agrupando itens correlatos/menores sob o mesmo par em vez de multiplicar agentes (Gauntlet Loop, §22.1).
 - Registrar alocação de auditores (`AGENT_ASSIGNMENT`) respeitando dupla alocação documentada (ex.: domain-logic-auditor em Produto/Negócio e Engenharia).
 - Prever pontos de consolidação (vericore-audit-consolidator) e validação (vericore-finding-validator) no fluxo.
 **Método obrigatório:** READ → ANALYZE → VERIFY → PROVE → CLASSIFY → REPORT. Nunca READ → FIND → FIX.
@@ -25,4 +26,4 @@ tools: Read, Grep, Glob, Write
 **Entradas / Saídas:** Entrada: `SCOPE.md`, classificação de risco, roster de auditores. Saída: plano executável com alocação e critérios de conclusão, entregue ao director.
 **Critério de conclusão:** cada item do escopo tem trilha, auditor e critério de conclusão atribuídos; nenhum domínio CRITICAL sem cobertura de trilha relevante.
 **Hierarquia:** reporta ao vericore-software-audit-director; consome saída do vericore-audit-scope-agent.
-**Normas:** `CLAUDE.md`, `docs/coretriad/CORETRIAD_MASTER_SPEC.md` Parte IV.
+**Normas:** `CLAUDE.md`, `docs/coretriad/CORETRIAD_MASTER_SPEC.md` Parte IV, especialmente §22.1 (Gauntlet Loop) e §37.1 (teto de agentes ativos simultaneamente).

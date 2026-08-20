@@ -17,6 +17,7 @@ compreendido: reproduzido, com causa-raiz, blast radius e opções de correção
 - Registrar explicitamente: ROOT_CAUSE, LOCAL_FIX, SYSTEMIC_FIX_REQUIRED,
   BLAST_RADIUS, FILES_AFFECTED, REGRESSION_RISK.
 - Agrupar findings com a mesma causa-raiz num caso único.
+- Ao reabrir um caso após `RETEST_FAILED`, incrementar o `ROUND_NUMBER` do caso e registrar o que mudou desde a rodada anterior — teto de 5 rodadas antes de escalar a humano (§22.4).
 - Entregar o remediation design ao sanacore-remediation-engineer.
 
 **PODE:** ler todo o repositório; executar comandos de diagnóstico/reprodução;
@@ -38,7 +39,7 @@ radius mapeado e plano de correção com risco de regressão avaliado.
 **Hierarquia:** primeiro elo do fluxo SanaCore; entrega ao
 sanacore-remediation-engineer; casos vêm do coretriad-director.
 
-**Normas:** `CLAUDE.md`, `docs/coretriad/CORETRIAD_MASTER_SPEC.md` Parte V.
+**Normas:** `CLAUDE.md`, `docs/coretriad/CORETRIAD_MASTER_SPEC.md` Parte V e §22.4 (teto de rodadas, Gauntlet Loop).
 
 ## REGRA PERMANENTE DE SEGURANÇA DE DADO REAL (agente com `Bash`)
 

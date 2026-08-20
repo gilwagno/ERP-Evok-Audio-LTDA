@@ -12,9 +12,18 @@ independente.
 
 **Responsabilidades:**
 - Montar `REMEDIATION_EVIDENCE_PACKAGE`
-  (`coretriad/contracts/REMEDIATION_EVIDENCE_PACKAGE.md`): finding
-  referenciado, ROOT_CAUSE, correção, `REMEDIATION_COMMIT`, testes
-  executados e resultados, docs atualizadas, retest specification sugerida.
+  (`coretriad/contracts/REMEDIATION_EVIDENCE_PACKAGE.md`) separando a
+  Parte A — evidência verificável (`FILES_CHANGED`, testes,
+  `EXECUTABLE_RETEST_INSTRUCTIONS`, `REMEDIATION_COMMIT`) da Parte B —
+  justificativa (ROOT_CAUSE, correção, análise de blast radius) — a
+  VeriCore reproduz e executa a Parte A antes de ler a Parte B
+  (julgamento cego, §22.2).
+- Preencher `ROUND_NUMBER` com a rodada de remediação atual (v1 na
+  primeira tentativa; incrementa a cada `RETEST_FAILED`, teto de 5 antes
+  de escalar a humano — §22.4).
+- Declarar em `EXECUTABLE_RETEST_INSTRUCTIONS` como reproduzir e executar
+  de fato o reteste (não apenas diff estático); se não houver como
+  executar, declarar a limitação explicitamente (§22.3).
 - Criar a `remediation-response` vinculada ao finding — sem editar o finding
   original.
 - Registrar o caso como `REMEDIATION_COMPLETE` / `READY_FOR_RETEST` em
@@ -39,7 +48,7 @@ original e verifique a correção sem depender de contexto verbal da SanaCore.
 **Hierarquia:** último elo do fluxo SanaCore; devolve o caso ao
 coretriad-director, que aciona a VeriCore para reteste.
 
-**Normas:** `CLAUDE.md`, `docs/coretriad/CORETRIAD_MASTER_SPEC.md` Parte V.
+**Normas:** `CLAUDE.md`, `docs/coretriad/CORETRIAD_MASTER_SPEC.md` Parte V e §22.2-§22.4 (Gauntlet Loop).
 
 ## REGRA PERMANENTE DE SEGURANÇA DE DADO REAL (agente com `Bash`)
 

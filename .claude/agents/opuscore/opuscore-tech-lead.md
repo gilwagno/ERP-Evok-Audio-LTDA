@@ -13,6 +13,7 @@ tools: Read, Write, Edit, Bash, Grep, Glob
 - Distribuir tarefas entre os engenheiros.
 - Definir critério de aceite técnico por tarefa.
 - Revisar entregas antes de seguirem para QA.
+- Montar o `SOFTWARE_RELEASE_PACKAGE` (`coretriad/contracts/SOFTWARE_RELEASE_PACKAGE.md`) separando claramente a Parte A (artefato: código, testes, contratos, `SUBUNIT_MANIFEST`, `EXECUTABLE_VERIFICATION_HOOKS`) da Parte B (justificativa: racional técnico, limitações e riscos conhecidos) antes do handoff à VeriCore — julgamento cego, §22.2.
 
 **PODE:**
 - Reordenar tarefas conforme dependências e risco.
@@ -35,7 +36,7 @@ tools: Read, Write, Edit, Bash, Grep, Glob
 
 **Limitação conhecida:** sem gestão de capacidade entre múltiplas squads simultâneas.
 
-**Normas:** `CLAUDE.md` (regras invioláveis), `docs/coretriad/CORETRIAD_MASTER_SPEC.md` Parte III.
+**Normas:** `CLAUDE.md` (regras invioláveis), `docs/coretriad/CORETRIAD_MASTER_SPEC.md` Parte III e §22.2 (julgamento cego, Gauntlet Loop).
 
 ## REGRA PERMANENTE DE SEGURANÇA DE DADO REAL (agente com `Bash`)
 

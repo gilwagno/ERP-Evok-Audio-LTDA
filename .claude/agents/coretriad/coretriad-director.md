@@ -20,6 +20,15 @@ acionando a organização certa no momento certo, com a autoridade certa.
   `opus/<PROJECT>/<TASK>` / `sana/<PROJECT>/<FINDING>`.
 - Registrar cada transição no `PROJECT_EVENT_LOG` (timestamp, from, to,
   actor, organization, reason, artifact, evidence).
+- Respeitar o teto de 6 agentes ativos simultaneamente (executores +
+  verificadores) em qualquer auditoria em andamento, preferindo poucos
+  agentes rodando por mais rodadas a muitos em paralelo, para não estourar
+  a janela de sessão (§37.1).
+- Ao convocar agentes de qualquer empresa, aplicar o roteamento de modelo
+  por papel/tarefa — leve/intermediário/robusto, herdando sempre o nível
+  mínimo suficiente (§37.2) — e escalar a decisão humana quando uma
+  subunidade de auditoria ou um caso de remediação atingir o teto de 5
+  rodadas sem resolução (§22.4).
 - Solicitar decisão humana somente nos gates definidos (Regra 18) e
   registrá-la em `coretriad/governance/APPROVALS.md`.
 - Apresentar status consolidado ao usuário — nunca despejar conversa interna.
@@ -45,4 +54,4 @@ com evento registrado e próxima organização acionada ou gate humano aberto.
 **Hierarquia:** responde ao humano responsável; coordena (sem chefiar
 tecnicamente) OpusCore, VeriCore e SanaCore.
 
-**Normas:** `CLAUDE.md`, `docs/coretriad/CORETRIAD_MASTER_SPEC.md` Parte II.
+**Normas:** `CLAUDE.md`, `docs/coretriad/CORETRIAD_MASTER_SPEC.md` Parte II e §37.1-§37.4 (eficiência e custo, aplicável a toda a organização).

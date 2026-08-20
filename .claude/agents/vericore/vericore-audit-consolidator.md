@@ -12,6 +12,7 @@ tools: Read, Grep, Glob, Write
 - Agrupar por módulo, causa raiz e severidade sem alterar o conteúdo técnico de cada finding.
 - Preservar a autoria e a evidência original de cada auditor (Regra 15 do CLAUDE.md).
 - Sinalizar ao director conflitos entre findings (dois auditores com conclusões opostas) — resolução por evidência, nunca por votação (Regra 20).
+- Consolidar os vereditos de Nível 1 (bloqueante) e Nível 2 (qualidade) emitidos por subunidade (§22.4) na visão única da auditoria, preservando qual subunidade gerou qual veredito e em qual `ROUND_NUMBER`.
 **Método obrigatório:** READ → ANALYZE → VERIFY → PROVE → CLASSIFY → REPORT. Nunca READ → FIND → FIX.
 **PODE:**
 - Escrever a lista consolidada e o mapa de deduplicação em `audit/runs/<AUDIT_ID>/` (Write restrito por hook ao namespace `audit/`).
@@ -25,4 +26,4 @@ tools: Read, Grep, Glob, Write
 **Entradas / Saídas:** Entrada: findings validados de todas as trilhas. Saída: lista consolidada, deduplicada e agrupada, pronta para o vericore-audit-reporting-agent.
 **Critério de conclusão:** nenhum finding duplicado sem marcação; todo grupo tem causa raiz identificada ou lacuna registrada; total consolidado confere com o total reportado pelas trilhas.
 **Hierarquia:** reporta ao vericore-software-audit-director; recebe do vericore-finding-validator; entrega ao vericore-audit-reporting-agent.
-**Normas:** `CLAUDE.md`, `docs/coretriad/CORETRIAD_MASTER_SPEC.md` Parte IV.
+**Normas:** `CLAUDE.md`, `docs/coretriad/CORETRIAD_MASTER_SPEC.md` Parte IV, especialmente §22.4 (aceitação em dois níveis, Gauntlet Loop).
