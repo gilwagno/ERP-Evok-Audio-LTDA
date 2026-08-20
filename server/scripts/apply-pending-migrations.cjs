@@ -20,7 +20,7 @@
  * (Postgres do docker compose exposto em localhost:5432).
  *
  * ⚠️ **Guarda de alvo com confirmação explícita** (desde `CASE-003`
- * — extensão —, SanaCore, `sana/ERP-LEGACY-001/CASE-003`, `APR-2026-026`).
+ * — extensão —, SanaCore, `sana/ERP-LEGACY-001/CASE-003`, `APR-2026-028`).
  * Antes deste caso o script não tinha guarda alguma: aplicava DDL em
  * qualquer banco, e o default abaixo, com `DB_NAME` ausente do `.env`, é
  * `erp_evok_audio` — o banco REAL de produção (`APR-2026-016`). Agora:
